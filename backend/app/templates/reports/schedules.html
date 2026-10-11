@@ -1,0 +1,14 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<h1 class="mb-3">{{ page.title }}</h1>
+<div class="card">
+  <div class="table-wrap"><table class="table-lux" id="main-table">
+    <thead><tr>
+      {% for col in page.columns %}<th data-key="{{ col.key }}">{{ col.label }}</th>{% endfor %}
+    </tr></thead>
+    <tbody data-src="{{ page.api_src }}"></tbody>
+  </table></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/tables.js') }}"></script>{% endblock %}

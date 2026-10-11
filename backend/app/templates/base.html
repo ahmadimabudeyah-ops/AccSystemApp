@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#A67B5B">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <title>{% block title %}نظام المحاسبة{% endblock %} — دفتر الأصالة</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23A67B5B'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='white' font-family='serif'%3E◈%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&family=Tajawal:wght@400;500;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@700;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/variables.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/components.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/utilities.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/rtl.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/dark.css') }}" rel="stylesheet">
+  <style>
+    body { font-family: var(--font-body); background: var(--bg); color: var(--text); line-height: 1.8;
+      font-kerning: normal; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+    h1,h2,h3,h4 { font-family: var(--font-head); }
+    .brand-logo { font-family: var(--font-logo); font-weight: 900; }
+    .app-shell { display: flex; min-height: 100vh; }
+    .sidebar { width: 264px; background: var(--gradient-subtle); border-inline-end: 1px solid var(--brown-200);
+      padding: 20px 14px; flex-shrink: 0; }
+    .sidebar .nav-link { display: flex; align-items: center; gap: 10px; color: var(--brown-800);
+      border-radius: var(--radius-md); padding: 10px 14px; font-weight: 500; }
+    .sidebar .nav-link:hover { background: var(--brown-50); }
+    .sidebar .nav-link.active { background: var(--brown-100); font-weight: 700;
+      border-inline-start: 3px solid var(--gold-500); }
+    .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .topbar { background: var(--surface); border-bottom: 1px solid var(--brown-200);
+      padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+    .content { padding: 24px; max-width: 1400px; width: 100%; margin-inline: auto; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% block body %}{% endblock %}
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/data.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

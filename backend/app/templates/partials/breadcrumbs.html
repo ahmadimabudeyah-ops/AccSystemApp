@@ -1,0 +1,11 @@
+{% if crumbs %}
+<nav aria-label="مسار التنقل" class="mb-3">
+  <ol class="breadcrumb" style="background:transparent;padding:0">
+    <li class="breadcrumb-item"><a href="{{ url_for('web_dashboard.index') }}">الرئيسية</a></li>
+    {% for label, url in crumbs %}
+      {% if loop.last or not url %}<li class="breadcrumb-item active" aria-current="page">{{ label }}</li>
+      {% else %}<li class="breadcrumb-item"><a href="{{ url }}">{{ label }}</a></li>{% endif %}
+    {% endfor %}
+  </ol>
+</nav>
+{% endif %}

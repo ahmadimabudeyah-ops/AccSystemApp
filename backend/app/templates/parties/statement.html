@@ -1,0 +1,26 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<h1 class="mb-3">{{ page.title }} <span class="ms-2">الرصيد: <strong class="num" id="st-bal">…</strong></span></h1>
+<div class="card">
+  <div class="table-wrap"><table class="table-lux" id="st-table">
+    <thead><tr><th>التاريخ</th><th>المستند</th><th>البيان</th><th class="num">مدين</th><th class="num">دائن</th></tr></thead>
+    <tbody id="st-body"><tr><td colspan="5"><div class="skeleton"></div></td></tr></tbody>
+  </table></div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const tb = document.getElementById("st-body");
+  if (!tb || !sessionStorage.getItem("access_token")) return;
+  const m = window.location.pathname.match(/\/parties\/([^/]+)\/statement/);
+  if (!m) return;
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  try {
+    const d = (await (await fetch(`/api/v1/parties/${m[1]}/statement`, { headers: window.apiHeaders() })).json()).data;
+    document.getElementById("st-bal").textContent = d.balance;
+    tb.innerHTML = (d.lines || []).map((l) =>
+      `<tr><td class="ltr">${esc(l.date)}</td><td class="ltr">${esc(l.doc || "—")}</td><td>${esc(l.description || "")}</td><td class="num">${esc(l.debit)}</td><td class="num">${esc(l.credit)}</td></tr>`).join("") || `<tr><td colspan="5">لا حركات مرحّلة لهذا الطرف</td></tr>`;
+  } catch (e) { tb.innerHTML = `<tr><td colspan="5">تعذر تحميل الكشف</td></tr>`; }
+});
+</script>
+{% endblock %}

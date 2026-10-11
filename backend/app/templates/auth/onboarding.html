@@ -1,0 +1,61 @@
+{% extends "layouts/auth.html" %}
+{% block title %}ابدأ نسختك التجريبية{% endblock %}
+{% block auth_subtitle %}تهيئة مؤسستك في 5 خطوات — مجانًا 30 يومًا{% endblock %}
+{% block auth_form %}
+<div x-data="{step:1, form:{}, done:null, error:null}">
+  <ol class="d-flex gap-2 mb-3" style="list-style:none;padding:0">
+    <template x-for="i in [1,2,3,4]"><li class="badge" :class="step>=i?'badge-posted':'badge-draft'" x-text="'خطوة '+i"></li></template>
+  </ol>
+  <div x-show="step===1">
+    <div class="mb-3"><label class="form-label">البريد الإلكتروني للمدير *</label>
+      <input class="form-control" type="email" dir="ltr" x-model="form.admin_email" required></div>
+    <div class="mb-3"><label class="form-label">كلمة المرور (8+ أحرف وأرقام) *</label>
+      <input class="form-control" type="password" dir="ltr" x-model="form.admin_password" required></div>
+    <button class="btn btn-primary w-100" @click="step=2">التالي</button>
+  </div>
+  <div x-show="step===2">
+    <div class="mb-3"><label class="form-label">رمز المؤسسة (لاتيني مختصر) *</label>
+      <input class="form-control ltr" dir="ltr" x-model="form.code" placeholder="ACME"></div>
+    <div class="mb-3"><label class="form-label">اسم المؤسسة *</label>
+      <input class="form-control" x-model="form.name_ar"></div>
+    <div class="d-flex gap-2"><button class="btn btn-secondary" @click="step=1">رجوع</button>
+      <button class="btn btn-primary flex-fill" @click="step=3">التالي</button></div>
+  </div>
+  <div x-show="step===3">
+    <div class="mb-3"><label class="form-label">نوع النشاط</label>
+      <select class="form-control" x-model="form.activity">
+        <option value="commercial">تجاري</option><option value="services">خدمي</option><option value="school">تعليمي</option>
+      </select></div>
+    <p style="color:var(--text-soft)">سنهيئ لك: الكيان والفرع + السنة المالية + دليل IFRS + الدفاتر + العملات والضريبة.</p>
+    <div class="d-flex gap-2"><button class="btn btn-secondary" @click="step=2">رجوع</button>
+      <button class="btn btn-primary flex-fill" @click="step=4">مراجعة</button></div>
+  </div>
+  <div x-show="step===4">
+    <div class="card mb-3"><div><strong x-text="form.name_ar"></strong> (<span dir="ltr" x-text="form.code"></span>)</div>
+      <div dir="ltr" x-text="form.admin_email"></div></div>
+    <div class="text-danger mb-2" x-text="error"></div>
+    <div class="d-flex gap-2"><button class="btn btn-secondary" @click="step=3">رجوع</button>
+      <button class="btn btn-gold flex-fill" @click="await doProvision($el)">إنشاء المؤسسة — ابدأ التجربة</button></div>
+  </div>
+  <div x-show="step===5" class="text-center">
+    <div style="font-size:48px">✓</div>
+    <h3>تم إنشاء مؤسستك!</h3>
+    <p>سجّل الدخول بالرمز <strong dir="ltr" x-text="done && done.code"></strong></p>
+    <a href="/login" class="btn btn-primary">تسجيل الدخول</a>
+  </div>
+</div>
+<script>
+window.doProvision = async function (el) {
+  const root = window.Alpine.$data(el.closest("[x-data]"));
+  root.error = null;
+  try {
+    const res = await fetch("/api/v1/tenants/provision", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(root.form) });
+    const data = await res.json();
+    if (!res.ok) { root.error = (data.error && data.error.message) || "تعذر الإنشاء"; return; }
+    sessionStorage.setItem("tenant_id", data.data.tenant_id);
+    root.done = data.data; root.step = 5;
+  } catch (e) { root.error = "تعذر الاتصال بالخادم"; }
+};
+</script>
+{% endblock %}

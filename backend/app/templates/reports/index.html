@@ -1,0 +1,15 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}التقارير{% endblock %}
+{% block content %}
+<h1 class="mb-3">فهرس التقارير</h1>
+<div class="row g-3">
+  {% for name, title in page.reports %}
+    <div class="col-md-6 col-xl-4">
+      <a href="{{ url_for('web_reports.view', name=name) }}" class="card" style="text-decoration:none;color:inherit;display:block">
+        <h3>{{ title }}</h3>
+        <p style="color:var(--text-soft)">عرض وطباعة وتصدير</p>
+      </a>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

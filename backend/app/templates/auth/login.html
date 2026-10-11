@@ -1,0 +1,40 @@
+{% extends "layouts/auth.html" %}
+{% block title %}تسجيل الدخول{% endblock %}
+{% block auth_heading %}تسجيل الدخول{% endblock %}
+{% block auth_subtitle %}أهلًا بعودتك، سجّل الدخول للمتابعة{% endblock %}
+{% block auth_form %}
+<form id="login-form" novalidate>
+  <div class="mb-3">
+    <label class="form-label" for="tenant">رمز المؤسسة <span class="req">*</span></label>
+    <input class="form-control ltr" id="tenant" name="tenant_code" dir="ltr" placeholder="DEMO" value="DEMO" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label" for="email">البريد الإلكتروني <span class="req">*</span></label>
+    <input class="form-control" id="email" name="email" type="email" dir="ltr" placeholder="admin@demo.local" required>
+    <div class="form-error" hidden>يرجى إدخال بريد إلكتروني صحيح</div>
+  </div>
+  <div class="mb-3">
+    <label class="form-label" for="password">كلمة المرور <span class="req">*</span></label>
+    <input class="form-control" id="password" name="password" type="password" dir="ltr" required>
+  </div>
+  <button class="btn btn-primary w-100" type="submit">تسجيل الدخول</button>
+  <div class="text-center mt-3"><a href="{{ url_for('web_auth.forgot_password') }}">نسيت كلمة المرور؟</a></div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/forms.js') }}"></script>
+<script>
+(function () {
+  try {
+    var q = new URLSearchParams(window.location.search);
+    if (q.get("logged_out") === "1") {
+      sessionStorage.removeItem("access_token");
+      sessionStorage.removeItem("refresh_token");
+      sessionStorage.removeItem("tenant_id");
+      sessionStorage.removeItem("entity_id");
+      history.replaceState(null, "", "{{ url_for('web_auth.login') }}");
+    }
+  } catch (e) { /* ignore */ }
+})();
+</script>
+{% endblock %}

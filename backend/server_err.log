@@ -1,0 +1,438 @@
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:51:31,205 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:51:31,213 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:51:31,224 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:51:31,232 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:51:31,239 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:51:31,251 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:51:31,257 INFO app.web web blueprint registered: web_products
+2026-10-10 23:51:31,271 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:51:31,300 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:51:31,320 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:51:31,341 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:51:31,342 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:51:31,346 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:51:31,352 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:51:31,376 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:51:31,392 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:51:31,401 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:51:31,414 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:51:31,421 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:51:31,438 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:51:31,445 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:51:32,386 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.100.3:5000
+2026-10-10 23:51:32,387 INFO werkzeug [33mPress CTRL+C to quit[0m
+2026-10-10 23:51:32,415 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:51:36,171 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:51:36,175 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:51:36,184 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:51:36,190 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:51:36,200 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:51:36,213 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:51:36,217 INFO app.web web blueprint registered: web_products
+2026-10-10 23:51:36,227 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:51:36,251 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:51:36,271 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:51:36,286 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:51:36,287 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:51:36,288 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:51:36,294 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:51:36,315 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:51:36,324 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:51:36,332 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:51:36,341 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:51:36,346 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:51:36,356 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:51:36,360 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:51:36,398 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:51:36,413 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:51:48,212 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:48] "GET /login HTTP/1.1" 200 -
+2026-10-10 23:51:50,719 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:50] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:51:50,735 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:50] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:51:50,736 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:50] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:51:50,750 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:50] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:51:50,765 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:50] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:51:50,767 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:50] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:51:52,802 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:52] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:51:52,803 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:52] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:51:52,817 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:51:52] "[36mGET /static/js/forms.js HTTP/1.1[0m" 304 -
+2026-10-10 23:52:50,082 INFO werkzeug  * Detected change in 'C:\\Python312\\Lib\\site-packages\\sqlalchemy\\orm\\state_changes.py', reloading
+2026-10-10 23:52:50,513 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:52:55,387 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:52:55,394 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:52:55,403 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:52:55,409 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:52:55,417 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:52:55,425 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:52:55,431 INFO app.web web blueprint registered: web_products
+2026-10-10 23:52:55,445 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:52:55,471 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:52:55,488 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:52:55,504 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:52:55,505 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:52:55,506 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:52:55,512 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:52:55,526 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:52:55,537 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:52:55,544 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:52:55,552 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:52:55,556 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:52:55,565 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:52:55,568 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:52:55,600 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:52:55,615 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:53:02,947 INFO werkzeug  * Detected change in 'C:\\AccSystem\\backend\\app\\__init__.py', reloading
+2026-10-10 23:53:03,590 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:53:06,875 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:53:06,879 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:53:06,885 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:53:06,889 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:53:06,893 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:53:06,900 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:53:06,904 INFO app.web web blueprint registered: web_products
+2026-10-10 23:53:06,911 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:53:06,925 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:53:06,938 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:53:06,949 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:53:06,950 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:53:06,950 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:53:06,953 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:53:06,964 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:53:06,971 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:53:06,975 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:53:06,982 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:53:06,984 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:53:06,991 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:53:06,994 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:53:07,021 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:53:07,033 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:53:07,664 INFO werkzeug  * Detected change in 'C:\\Python312\\Lib\\site-packages\\werkzeug\\test.py', reloading
+2026-10-10 23:53:08,125 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:53:13,250 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:53:13,255 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:53:13,265 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:53:13,273 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:53:13,282 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:53:13,308 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:53:13,314 INFO app.web web blueprint registered: web_products
+2026-10-10 23:53:13,342 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:53:13,372 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:53:13,399 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:53:13,420 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:53:13,431 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:53:13,431 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:53:13,437 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:53:13,458 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:53:13,473 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:53:13,494 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:53:13,503 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:53:13,508 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:53:13,520 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:53:13,541 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:53:13,603 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:53:13,622 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:53:13,807 INFO werkzeug  * Detected change in 'C:\\AccSystem\\backend\\app\\models\\edu.py', reloading
+2026-10-10 23:53:14,372 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:53:18,068 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:53:18,092 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:53:18,121 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:53:18,139 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:53:18,160 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:53:18,191 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:53:18,207 INFO app.web web blueprint registered: web_products
+2026-10-10 23:53:18,225 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:53:18,258 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:53:18,291 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:53:18,308 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:53:18,312 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:53:18,314 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:53:18,320 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:53:18,352 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:53:18,369 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:53:18,383 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:53:18,434 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:53:18,447 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:53:18,478 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:53:18,483 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:53:18,546 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:53:18,583 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:53:19,090 INFO werkzeug  * Detected change in 'C:\\AccSystem\\backend\\app\\services\\edu_service.py', reloading
+2026-10-10 23:53:19,771 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:53:24,152 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:53:24,157 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:53:24,189 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:53:24,208 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:53:24,218 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:53:24,241 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:53:24,250 INFO app.web web blueprint registered: web_products
+2026-10-10 23:53:24,284 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:53:24,323 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:53:24,342 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:53:24,370 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:53:24,380 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:53:24,381 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:53:24,388 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:53:24,432 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:53:24,448 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:53:24,671 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:53:24,903 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:53:25,016 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:53:25,347 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:53:25,353 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:53:25,405 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:53:25,426 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:53:34,949 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:34] "GET /login HTTP/1.1" 200 -
+2026-10-10 23:53:37,443 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:37] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:53:37,459 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:37] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:53:37,459 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:37] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:53:37,460 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:37] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:53:37,491 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:37] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:53:37,491 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:37] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:53:39,472 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:39] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:53:39,487 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:39] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:53:39,488 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:53:39] "[36mGET /static/js/forms.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:02,782 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:02] "GET /login HTTP/1.1" 200 -
+2026-10-10 23:55:02,866 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:02] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:02,924 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:02] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:02,944 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:02] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:02,975 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:02] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:03,009 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:03] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:03,083 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:03] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:03,100 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:03] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:03,114 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:03] "[36mGET /static/js/forms.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:03,185 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:03] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:55:05,798 INFO werkzeug  * Detected change in 'C:\\AccSystem\\backend\\app\\utils\\__init__.py', reloading
+2026-10-10 23:55:06,332 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:55:13,616 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:55:13,639 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:55:13,649 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:55:13,658 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:55:13,666 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:55:13,674 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:55:13,681 INFO app.web web blueprint registered: web_products
+2026-10-10 23:55:13,695 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:55:13,725 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:55:13,752 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:55:13,773 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:55:13,774 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:55:13,774 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:55:13,780 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:55:13,804 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:55:13,822 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:55:13,831 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:55:13,841 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:55:13,847 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:55:13,860 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:55:13,866 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:55:13,912 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:55:13,929 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:55:14,160 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "GET /login HTTP/1.1" 200 -
+2026-10-10 23:55:14,755 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:14,780 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:14,787 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:14,796 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "[36mGET /static/js/forms.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:14,805 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:14,810 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:14,811 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:55:14,898 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:14,898 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:14] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:15,833 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "GET /login HTTP/1.1" 200 -
+2026-10-10 23:55:15,899 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:15,913 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:15,918 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:15,933 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:15,933 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:55:15,938 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:15,939 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:15,950 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "[36mGET /static/js/forms.js HTTP/1.1[0m" 304 -
+2026-10-10 23:55:15,958 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:55:15] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:55:16,684 INFO werkzeug  * Detected change in 'C:\\AccSystem\\backend\\scripts\\check_cashier.py', reloading
+2026-10-10 23:55:17,203 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:55:22,715 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:55:22,721 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:55:22,731 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:55:22,738 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:55:22,749 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:55:22,765 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:55:22,774 INFO app.web web blueprint registered: web_products
+2026-10-10 23:55:22,793 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:55:22,844 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:55:22,873 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:55:22,896 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:55:22,897 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:55:22,898 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:55:22,905 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:55:22,935 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:55:22,949 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:55:22,958 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:55:22,972 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:55:22,978 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:55:22,992 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:55:22,999 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:55:23,082 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:55:23,104 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:55:27,549 INFO werkzeug  * Detected change in 'C:\\AccSystem\\backend\\scripts\\dbg_biz.py', reloading
+2026-10-10 23:55:28,175 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:55:34,310 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:55:34,336 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:55:34,346 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:55:34,355 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:55:34,364 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:55:34,377 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:55:34,385 INFO app.web web blueprint registered: web_products
+2026-10-10 23:55:34,401 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:55:34,436 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:55:34,462 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:55:34,479 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:55:34,480 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:55:34,481 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:55:34,487 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:55:34,511 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:55:34,527 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:55:34,533 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:55:34,539 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:55:34,545 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:55:34,559 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:55:34,566 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:55:34,608 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:55:34,632 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:55:38,966 INFO werkzeug  * Detected change in 'C:\\AccSystem\\backend\\scripts\\post_entry.py', reloading
+2026-10-10 23:55:39,545 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:55:46,279 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:55:46,303 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:55:46,313 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:55:46,320 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:55:46,330 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:55:46,343 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:55:46,351 INFO app.web web blueprint registered: web_products
+2026-10-10 23:55:46,367 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:55:46,401 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:55:46,427 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:55:46,444 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:55:46,445 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:55:46,447 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:55:46,453 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:55:46,478 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:55:46,493 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:55:46,501 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:55:46,513 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:55:46,518 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:55:46,530 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:55:46,534 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:55:46,577 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:55:46,594 INFO werkzeug  * Debugger PIN: 119-152-666
+2026-10-10 23:55:50,060 INFO werkzeug  * Detected change in 'C:\\AccSystem\\backend\\tests\\test_posting.py', reloading
+2026-10-10 23:55:50,064 INFO werkzeug  * Detected change in 'C:\\AccSystem\\backend\\tests\\test_security.py', reloading
+2026-10-10 23:55:50,551 INFO werkzeug  * Restarting with watchdog (windowsapi)
+C:\Users\DELL 5590\AppData\Roaming\Python\Python312\site-packages\flask_limiter\extension.py:337: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+2026-10-10 23:55:57,205 INFO app.web web blueprint registered: web_auth
+2026-10-10 23:55:57,213 INFO app.web web blueprint registered: web_dashboard
+2026-10-10 23:55:57,226 INFO app.web web blueprint registered: web_accounts
+2026-10-10 23:55:57,236 INFO app.web web blueprint registered: web_journals
+2026-10-10 23:55:57,246 INFO app.web web blueprint registered: web_entries
+2026-10-10 23:55:57,259 INFO app.web web blueprint registered: web_parties
+2026-10-10 23:55:57,269 INFO app.web web blueprint registered: web_products
+2026-10-10 23:55:57,287 INFO app.web web blueprint registered: web_inventory
+2026-10-10 23:55:57,322 INFO app.web web blueprint registered: web_sales
+2026-10-10 23:55:57,352 INFO app.web web blueprint registered: web_purchases
+2026-10-10 23:55:57,375 INFO app.web web blueprint registered: web_treasury
+2026-10-10 23:55:57,376 INFO app.web web module assets not yet present (No module named 'app.web.assets')
+2026-10-10 23:55:57,377 INFO app.web web module taxes not yet present (No module named 'app.web.taxes')
+2026-10-10 23:55:57,384 INFO app.web web blueprint registered: web_reports
+2026-10-10 23:55:57,409 INFO app.web web blueprint registered: web_settings
+2026-10-10 23:55:57,428 INFO app.web web blueprint registered: web_hr
+2026-10-10 23:55:57,440 INFO app.web web blueprint registered: web_edu
+2026-10-10 23:55:57,452 INFO app.web web blueprint registered: web_projects
+2026-10-10 23:55:57,458 INFO app.web web blueprint registered: web_portal
+2026-10-10 23:55:57,473 INFO app.web web blueprint registered: web_assets
+2026-10-10 23:55:57,480 INFO app.web web blueprint registered: web_taxes
+2026-10-10 23:55:57,542 WARNING werkzeug  * Debugger is active!
+2026-10-10 23:55:57,564 INFO werkzeug  * Debugger PIN: 119-152-666
+C:\Python312\Lib\site-packages\jwt\api_jwt.py:147: InsecureKeyLengthWarning: The HMAC key is 20 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  return self._jws.encode(
+2026-10-10 23:56:05,387 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:05] "POST /api/v1/auth/login HTTP/1.1" 200 -
+2026-10-10 23:56:05,611 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:05] "GET /dashboard HTTP/1.1" 200 -
+2026-10-10 23:56:06,103 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:06] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:06,125 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:06] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:06,133 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:06] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:06,147 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:06] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:06,164 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:06] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:06,179 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:06] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:56:06,191 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:06] "[36mGET /static/js/charts.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:06,196 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:06] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:06,235 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:06] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:10,680 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "GET /accounts HTTP/1.1" 200 -
+2026-10-10 23:56:10,751 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:10,754 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:10,759 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:10,772 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:10,776 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:10,783 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:10,789 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:10,798 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:56:10,825 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:10] "[36mGET /static/js/tables.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:18,256 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "GET /purchases/requests HTTP/1.1" 200 -
+2026-10-10 23:56:18,298 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:18,313 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:18,318 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:18,328 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:18,333 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:18,335 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:18,359 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:18,370 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "[36mGET /static/js/tables.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:18,394 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:18] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:56:20,091 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "GET /purchases/requests/new HTTP/1.1" 200 -
+2026-10-10 23:56:20,133 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:20,149 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:20,158 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:20,164 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:20,172 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:20,180 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:20,190 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "[36mGET /static/js/forms.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:20,288 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:20,312 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:20] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:56:24,927 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:24] "GET /sales/deliveries HTTP/1.1" 200 -
+2026-10-10 23:56:24,977 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:24] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:24,991 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:24] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,003 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,029 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,053 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,057 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,078 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,100 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/js/tables.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,111 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,935 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "GET /sales/invoices HTTP/1.1" 200 -
+2026-10-10 23:56:25,978 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/css/variables.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,992 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/css/components.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:25,998 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:25] "[36mGET /static/css/utilities.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:26,000 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:26] "[36mGET /static/css/rtl.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:26,006 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:26] "[36mGET /static/css/dark.css HTTP/1.1[0m" 304 -
+2026-10-10 23:56:26,014 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:26] "[36mGET /static/js/main.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:26,018 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:26] "[36mGET /static/js/data.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:26,023 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:26] "[36mGET /static/js/tables.js HTTP/1.1[0m" 304 -
+2026-10-10 23:56:26,023 INFO werkzeug 127.0.0.1 - - [10/Oct/2026 23:56:26] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -

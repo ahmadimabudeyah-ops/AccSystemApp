@@ -1,0 +1,78 @@
+/* components.css — الأزرار والبطاقات والجداول والنماذج والنوافذ */
+/* أزرار */
+.btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+  padding-inline: 20px; padding-block: 10px; border-radius: var(--radius-md);
+  font-family: var(--font-body); font-weight: 700; font-size: 15px;
+  border: 1px solid transparent; cursor: pointer; text-decoration: none;
+  transition: transform .2s ease-in-out, box-shadow .2s ease-in-out, background .2s; }
+.btn:active { transform: scale(.98); }
+.btn-primary { background: var(--brown-500); color: #fff; }
+.btn-primary:hover { background: var(--brown-600); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.btn-gold { background: var(--gradient-gold); color: #fff; }
+.btn-gold:hover { box-shadow: var(--shadow-gold); transform: translateY(-1px); }
+.btn-secondary { background: #fff; border-color: var(--brown-300); color: var(--brown-700); }
+.btn-secondary:hover { background: var(--brown-50); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-ghost { background: transparent; color: var(--brown-700); }
+.btn-icon { width: 40px; height: 40px; padding: 0; justify-content: center; border-radius: var(--radius-md); }
+/* بطاقات */
+.card { background: var(--surface); border: 1px solid var(--brown-200);
+  border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s ease-in-out, transform .2s ease-in-out; }
+.card:hover { box-shadow: var(--shadow-md); }
+.card-stat { position: relative; overflow: hidden; }
+.card-stat::before { content: ""; position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
+  width: 4px; background: var(--gradient-gold); border-start-start-radius: var(--radius-lg);
+  border-end-start-radius: var(--radius-lg); }
+.card-stat .stat-value { font-family: var(--font-num); font-weight: 700; font-size: 30px; color: var(--brown-800); }
+.card-stat .stat-label { color: var(--text-soft); font-size: 14px; }
+/* جداول */
+.table-wrap { overflow-x: auto; border: 1px solid var(--brown-200); border-radius: var(--radius-lg); background: #fff; }
+table.table-lux { width: 100%; border-collapse: collapse; font-family: var(--font-body); }
+.table-lux thead th { background: var(--brown-50); color: var(--brown-700); font-weight: 700;
+  text-align: start; padding: 12px 16px; white-space: nowrap; }
+.table-lux tbody td { padding: 12px 16px; border-top: 1px solid var(--brown-100); text-align: start; }
+.table-lux tbody tr:hover { background: var(--brown-50); }
+.table-lux td.num, .table-lux th.num { font-family: var(--font-num); text-align: end; }
+/* شارات */
+.badge { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: var(--radius-full);
+  font-size: 12px; font-weight: 700; font-family: var(--font-body); }
+.badge-draft { background: var(--stone-200); color: var(--stone-700); }
+.badge-approved, .badge-sent { background: var(--info-bg); color: var(--info); }
+.badge-posted, .badge-paid, .badge-done { background: var(--success-bg); color: var(--success); }
+.badge-cancelled, .badge-rejected, .badge-overdue { background: var(--danger-bg); color: var(--danger); }
+.badge-pending, .badge-partial { background: var(--warning-bg); color: var(--warning); }
+/* نماذج */
+.form-label { display: block; margin-bottom: 6px; color: var(--brown-700); font-weight: 700; text-align: start; }
+.form-label .req { color: var(--danger); }
+.form-control { width: 100%; min-height: 48px; padding-inline: 14px; border: 1px solid var(--brown-200);
+  border-radius: var(--radius-md); font-family: var(--font-body); font-size: 16px; background: #fff; color: var(--text); }
+.form-control:focus { outline: none; border-color: var(--brown-500); box-shadow: var(--shadow-gold); }
+.form-control[dir="ltr"] { text-align: left; }
+.form-error { color: var(--danger); font-size: 13px; margin-top: 4px; }
+.form-control.invalid { border-color: var(--danger); }
+/* نوافذ */
+.modal-overlay { position: fixed; inset: 0; background: rgba(43,29,19,.45); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; z-index: 1050; }
+.modal-box { background: #fff; border-radius: 20px; max-width: 560px; width: 92%;
+  box-shadow: var(--shadow-xl); animation: modal-in .25s ease-out; }
+.modal-header { display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 24px; border-bottom: 1px solid var(--brown-100); }
+.modal-body { padding: 24px; } .modal-footer { padding: 16px 24px; display: flex; gap: 12px; justify-content: flex-start; }
+@keyframes modal-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+/* تنبيهات */
+.toast-stack { position: fixed; top: 16px; inset-inline-end: 16px; z-index: 1100; display: flex;
+  flex-direction: column; gap: 10px; }
+.toast { background: #fff; border: 1px solid var(--brown-200); border-inline-start: 4px solid var(--brown-500);
+  border-radius: var(--radius-md); padding: 12px 16px; box-shadow: var(--shadow-lg);
+  animation: toast-in .25s ease-out; min-width: 280px; }
+.toast-success { border-inline-start-color: var(--success); }
+.toast-error { border-inline-start-color: var(--danger); }
+@keyframes toast-in { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: none; } }
+/* شجرة */
+.tree-node { border-inline-start: 2px solid var(--brown-200); padding-inline-start: 16px; margin-inline-start: 8px; }
+.tree-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius-sm); cursor: pointer; }
+.tree-row:hover { background: var(--brown-50); }
+.tree-row.selected { background: var(--brown-100); }
+.type-asset { color: var(--success); } .type-liability { color: var(--danger); }
+.type-equity { color: var(--brown-600); } .type-income { color: var(--info); } .type-expense { color: var(--warning); }

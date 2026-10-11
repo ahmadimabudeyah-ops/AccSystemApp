@@ -1,0 +1,14 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}شجرة الحسابات{% endblock %}
+{% block content %}
+<h1 class="mb-3">شجرة الحسابات</h1>
+<div class="row g-3">
+  <div class="col-xl-7"><div class="card">
+    <div id="accounts-tree"><div class="skeleton"></div><p style="color:var(--text-soft)">سجّل الدخول لعرض الشجرة الحية</p></div>
+  </div></div>
+  <div class="col-xl-5"><div class="card" id="account-detail">
+    <h3>تفاصيل الحساب</h3>
+    <p style="color:var(--text-soft)">اختر حسابًا من الشجرة لعرض رصيده وحركاته.</p>
+  </div></div>
+</div>
+{% endblock %}

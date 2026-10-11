@@ -1,0 +1,36 @@
+{# جسم قائمة عام: page = {title, new_url, search_action, columns:[{key,label,num}], rows, empty, base_url, page, pages} #}
+<div class="d-flex justify-between align-center mb-3">
+  <h1>{{ page.title }}</h1>
+  <div class="d-flex gap-2">
+    {% if page.export %}<button class="btn btn-secondary" onclick="exportTable('main-table')"><i class="fa-solid fa-download"></i> تصدير</button>{% endif %}
+    {% if page.new_url %}<a href="{{ page.new_url }}" class="btn btn-primary"><i class="fa-solid fa-plus"></i> جديد</a>{% endif %}
+  </div>
+</div>
+{% if page.search_action %}
+<div class="card mb-3">{% set action = page.search_action %}{% include "partials/search_bar.html" %}</div>
+{% endif %}
+<div class="card">
+  <div class="table-wrap"><table class="table-lux" id="main-table">
+    <thead><tr>
+      {% for col in page.columns %}<th data-key="{{ col.key }}" class="{% if col.num %}num{% endif %}" {% if col.num %}data-num="1"{% endif %} {% if col.badge %}data-badge="1"{% endif %}>{{ col.label }}</th>{% endfor %}
+      {% if page.row_actions %}<th>إجراءات</th>{% endif %}
+    </tr></thead>
+    <tbody {% if page.api %}data-api="{{ page.api }}"{% endif %} {% if page.api_src %}data-src="{{ page.api_src }}"{% endif %} {% if page.detail_base %}data-detail="{{ page.detail_base }}"{% endif %}>
+      {% for row in page.rows %}
+        <tr>
+          {% for col in page.columns %}
+            <td class="{% if col.num %}num{% endif %}">
+              {% if col.badge %}<span class="badge badge-{{ row[col.key] }}">{{ row[col.key] }}</span>
+              {% elif col.link %}<a href="{{ col.link }}{{ row[col.link_key or 'id'] }}">{{ row[col.key] }}</a>
+              {% else %}{{ row[col.key] }}{% endif %}
+            </td>
+          {% endfor %}
+          {% if page.row_actions %}<td><a class="btn btn-ghost btn-icon" href="{{ page.detail_base }}/{{ row.id }}" aria-label="عرض"><i class="fa-solid fa-eye"></i></a></td>{% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="20">{% set message = page.empty %}{% set new_url = page.new_url %}{% include "partials/empty_state.html" %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% include "partials/pagination.html" %}
+</div>

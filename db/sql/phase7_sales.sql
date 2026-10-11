@@ -1,0 +1,734 @@
+-- ============================================================================
+-- Phase 7 — المبيعات Quote-to-Cash (41 جدول) | Requires: phase1,3,4,5,6
+-- tax_id بلا FK (phase الضرائب)؛ القيود تُولد عبر EventContract لا Trigger مباشر
+-- (Trigger الترحيل المباشر مرفوض: يخالف قاعدة «لا كتابة في الأستاذ من الوحدات»).
+-- ============================================================================
+
+-- ================= A: الفرق (5) =================
+CREATE TABLE IF NOT EXISTS sales_teams (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL,
+  leader_id UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  branch_id UUID REFERENCES branches(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  monthly_target NUMERIC(18,3) NOT NULL DEFAULT 0, annual_target NUMERIC(18,3) NOT NULL DEFAULT 0,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', is_active BOOLEAN NOT NULL DEFAULT TRUE, notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_steam_code UNIQUE (tenant_id, entity_id, code)
+);
+CREATE TABLE IF NOT EXISTS sales_team_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  team_id UUID NOT NULL REFERENCES sales_teams(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  member_role VARCHAR(20) NOT NULL DEFAULT 'rep',
+  joined_on DATE NOT NULL DEFAULT CURRENT_DATE, left_on DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE, notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_stm UNIQUE (tenant_id, team_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS sales_reps (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL, email CITEXT, phone VARCHAR(50),
+  team_id UUID REFERENCES sales_teams(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  monthly_target NUMERIC(18,3) NOT NULL DEFAULT 0, annual_target NUMERIC(18,3) NOT NULL DEFAULT 0,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', commission_pct NUMERIC(7,4) NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE, notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_srep_code UNIQUE (tenant_id, entity_id, code)
+);
+CREATE TABLE IF NOT EXISTS sales_targets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  rep_id UUID REFERENCES sales_reps(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  team_id UUID REFERENCES sales_teams(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  period_code VARCHAR(20) NOT NULL, target_amount NUMERIC(18,3) NOT NULL,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', achieved_amount NUMERIC(18,3) NOT NULL DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'open', notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS sales_commissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  rep_id UUID NOT NULL REFERENCES sales_reps(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  invoice_id UUID, base_amount NUMERIC(18,3) NOT NULL, commission_pct NUMERIC(7,4) NOT NULL,
+  commission_amount NUMERIC(18,3) NOT NULL, currency_id CHAR(3) NOT NULL DEFAULT 'JOD',
+  status VARCHAR(20) NOT NULL DEFAULT 'due', due_on DATE, paid_at TIMESTAMPTZ, notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT ck_scom_status CHECK (status IN ('due','approved','paid','cancelled'))
+);
+
+-- ================= B: عروض (4) =================
+CREATE TABLE IF NOT EXISTS quotations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  doc_number VARCHAR(50) NOT NULL, customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  contact_id UUID REFERENCES party_contacts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  quote_date DATE NOT NULL DEFAULT CURRENT_DATE, valid_until DATE,
+  payment_term_id UUID, currency_id CHAR(3) NOT NULL DEFAULT 'JOD', exchange_rate NUMERIC(18,10) NOT NULL DEFAULT 1,
+  subtotal NUMERIC(18,3) NOT NULL DEFAULT 0, discount_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  tax_total NUMERIC(18,3) NOT NULL DEFAULT 0, grand_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  status VARCHAR(30) NOT NULL DEFAULT 'draft',
+  status_changed_at TIMESTAMPTZ, status_changed_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  rep_id UUID REFERENCES sales_reps(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  reference VARCHAR(100), notes TEXT, terms TEXT, metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_quot_num UNIQUE (tenant_id, entity_id, doc_number),
+  CONSTRAINT ck_quot_status CHECK (status IN ('draft','pending_review','approved','sent','accepted','rejected','expired','cancelled','converted'))
+);
+CREATE TABLE IF NOT EXISTS quotation_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  quotation_id UUID NOT NULL REFERENCES quotations(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  line_number INTEGER NOT NULL CHECK (line_number>=1),
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  description TEXT, qty NUMERIC(18,6) NOT NULL CHECK (qty>0),
+  uom_id UUID REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  unit_price NUMERIC(18,3) NOT NULL CHECK (unit_price>=0),
+  discount_pct NUMERIC(7,4) NOT NULL DEFAULT 0, tax_id UUID, line_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  expected_on DATE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_ql UNIQUE (quotation_id, line_number)
+);
+CREATE TABLE IF NOT EXISTS quotation_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  quotation_id UUID NOT NULL REFERENCES quotations(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  version_no INTEGER NOT NULL CHECK (version_no>=1),
+  effective_from DATE NOT NULL, changes JSONB NOT NULL,
+  approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, attachment_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_qv UNIQUE (tenant_id, quotation_id, version_no)
+);
+CREATE TABLE IF NOT EXISTS quotation_approvals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  quotation_id UUID NOT NULL REFERENCES quotations(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  approver_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  approval_type VARCHAR(20) NOT NULL DEFAULT 'final', status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  reason TEXT, decided_at TIMESTAMPTZ, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- ================= C: أوامر (4) =================
+CREATE TABLE IF NOT EXISTS sales_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  doc_number VARCHAR(50) NOT NULL, customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  contact_id UUID REFERENCES party_contacts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  order_date DATE NOT NULL DEFAULT CURRENT_DATE, expected_on DATE,
+  payment_term_id UUID, currency_id CHAR(3) NOT NULL DEFAULT 'JOD', exchange_rate NUMERIC(18,10) NOT NULL DEFAULT 1,
+  subtotal NUMERIC(18,3) NOT NULL DEFAULT 0, discount_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  tax_total NUMERIC(18,3) NOT NULL DEFAULT 0, grand_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  status VARCHAR(30) NOT NULL DEFAULT 'draft',
+  status_changed_at TIMESTAMPTZ, status_changed_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  approved_at TIMESTAMPTZ, approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  rep_id UUID REFERENCES sales_reps(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  reference VARCHAR(100), quotation_id UUID REFERENCES quotations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  notes TEXT, terms TEXT, metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_so_num UNIQUE (tenant_id, entity_id, doc_number),
+  CONSTRAINT ck_so_status CHECK (status IN ('draft','confirmed','in_progress','partially_delivered','fully_delivered','partially_invoiced','fully_invoiced','completed','cancelled','on_hold'))
+);
+CREATE TABLE IF NOT EXISTS sales_order_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  order_id UUID NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  line_number INTEGER NOT NULL CHECK (line_number>=1),
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  description TEXT, ordered_qty NUMERIC(18,6) NOT NULL CHECK (ordered_qty>0),
+  delivered_qty NUMERIC(18,6) NOT NULL DEFAULT 0, invoiced_qty NUMERIC(18,6) NOT NULL DEFAULT 0, returned_qty NUMERIC(18,6) NOT NULL DEFAULT 0,
+  uom_id UUID REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  unit_price NUMERIC(18,3) NOT NULL, discount_pct NUMERIC(7,4) NOT NULL DEFAULT 0, tax_id UUID,
+  line_total NUMERIC(18,3) NOT NULL DEFAULT 0, expected_on DATE,
+  warehouse_id UUID REFERENCES warehouses(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_sol UNIQUE (order_id, line_number)
+);
+CREATE TABLE IF NOT EXISTS sales_order_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  order_id UUID NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  version_no INTEGER NOT NULL, effective_from DATE NOT NULL, changes JSONB NOT NULL,
+  approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, attachment_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_sov UNIQUE (tenant_id, order_id, version_no)
+);
+CREATE TABLE IF NOT EXISTS sales_order_amendments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  order_id UUID NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  amendment_no INTEGER NOT NULL, amendment_type VARCHAR(20) NOT NULL,
+  old_value JSONB, new_value JSONB, reason TEXT NOT NULL,
+  approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, decided_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_soa UNIQUE (tenant_id, order_id, amendment_no)
+);
+
+-- ================= D: تسليم (4) =================
+CREATE TABLE IF NOT EXISTS deliveries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  doc_number VARCHAR(50) NOT NULL,
+  order_id UUID REFERENCES sales_orders(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  delivery_date DATE NOT NULL DEFAULT CURRENT_DATE, actual_on DATE,
+  warehouse_id UUID REFERENCES warehouses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  ship_address JSONB, ship_method VARCHAR(50), carrier VARCHAR(100), tracking_no VARCHAR(100),
+  status VARCHAR(30) NOT NULL DEFAULT 'draft',
+  status_changed_at TIMESTAMPTZ, status_changed_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  notes TEXT, metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_del_num UNIQUE (tenant_id, entity_id, doc_number)
+);
+CREATE TABLE IF NOT EXISTS delivery_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  delivery_id UUID NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  line_number INTEGER NOT NULL, product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  requested_qty NUMERIC(18,6) NOT NULL, delivered_qty NUMERIC(18,6) NOT NULL DEFAULT 0,
+  uom_id UUID REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  lot_id UUID REFERENCES lots(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  serial_id UUID REFERENCES serials(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  source_location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_dell UNIQUE (delivery_id, line_number)
+);
+CREATE TABLE IF NOT EXISTS delivery_packages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  delivery_id UUID NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  package_no VARCHAR(50) NOT NULL, package_type VARCHAR(30) NOT NULL DEFAULT 'box',
+  weight NUMERIC(18,6), dims JSONB NOT NULL DEFAULT '{}', status VARCHAR(20) NOT NULL DEFAULT 'open', notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS delivery_tracking (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  delivery_id UUID NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  tracked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), track_status VARCHAR(30) NOT NULL,
+  location_text VARCHAR(255), notes TEXT,
+  tracked_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- ================= E: فواتير (5) =================
+CREATE TABLE IF NOT EXISTS customer_invoices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  doc_number VARCHAR(50) NOT NULL,
+  customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  contact_id UUID REFERENCES party_contacts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  invoice_date DATE NOT NULL DEFAULT CURRENT_DATE, due_on DATE NOT NULL,
+  payment_term_id UUID, currency_id CHAR(3) NOT NULL DEFAULT 'JOD', exchange_rate NUMERIC(18,10) NOT NULL DEFAULT 1,
+  subtotal NUMERIC(18,3) NOT NULL DEFAULT 0, discount_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  tax_total NUMERIC(18,3) NOT NULL DEFAULT 0, grand_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  paid_amount NUMERIC(18,3) NOT NULL DEFAULT 0, remaining_amount NUMERIC(18,3) NOT NULL DEFAULT 0,
+  status VARCHAR(30) NOT NULL DEFAULT 'draft',
+  status_changed_at TIMESTAMPTZ, status_changed_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  posted_at TIMESTAMPTZ, posted_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  approved_at TIMESTAMPTZ, approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  journal_entry_id UUID REFERENCES journal_entries(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  event_key VARCHAR(200), einvoice_uuid VARCHAR(100),
+  rep_id UUID REFERENCES sales_reps(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  reference VARCHAR(100), order_id UUID REFERENCES sales_orders(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  delivery_id UUID REFERENCES deliveries(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  notes TEXT, terms TEXT, metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_inv_num UNIQUE (tenant_id, entity_id, doc_number),
+  CONSTRAINT uq_inv_event UNIQUE (tenant_id, entity_id, event_key),
+  CONSTRAINT ck_inv_due CHECK (due_on >= invoice_date),
+  CONSTRAINT ck_inv_status CHECK (status IN ('draft','pending','approved','posted','sent','partially_paid','paid','overdue','cancelled','reversed','disputed'))
+);
+CREATE TABLE IF NOT EXISTS customer_invoice_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  invoice_id UUID NOT NULL REFERENCES customer_invoices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  line_number INTEGER NOT NULL, product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  description TEXT, qty NUMERIC(18,6) NOT NULL CHECK (qty>0),
+  uom_id UUID REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  unit_price NUMERIC(18,3) NOT NULL, discount_pct NUMERIC(7,4) NOT NULL DEFAULT 0, tax_id UUID,
+  line_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  account_id UUID REFERENCES accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  cost_center_id UUID, project_id UUID, dims JSONB NOT NULL DEFAULT '{}', notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_cil UNIQUE (invoice_id, line_number)
+);
+CREATE TABLE IF NOT EXISTS customer_invoice_taxes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  invoice_id UUID NOT NULL REFERENCES customer_invoices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  line_id UUID REFERENCES customer_invoice_lines(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  tax_id UUID NOT NULL, tax_rate NUMERIC(7,4) NOT NULL, tax_amount NUMERIC(18,3) NOT NULL,
+  account_id UUID REFERENCES accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS customer_invoice_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  invoice_id UUID NOT NULL REFERENCES customer_invoices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  version_no INTEGER NOT NULL, effective_from DATE NOT NULL, changes JSONB NOT NULL,
+  approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, attachment_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_civ UNIQUE (tenant_id, invoice_id, version_no)
+);
+CREATE TABLE IF NOT EXISTS customer_invoice_einvoicing (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  invoice_id UUID NOT NULL UNIQUE REFERENCES customer_invoices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  einv_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  external_ref VARCHAR(200), request_payload JSONB, response_payload JSONB,
+  sent_at TIMESTAMPTZ, responded_at TIMESTAMPTZ, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT ck_einv_status CHECK (einv_status IN ('not_applicable','pending','queued','sending','sent','accepted','rejected','failed','retrying','cancelled'))
+);
+
+-- ================= F: دفع وتخصيص (5) =================
+CREATE TABLE IF NOT EXISTS payment_terms (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL,
+  term_type VARCHAR(20) NOT NULL DEFAULT 'net', days INTEGER NOT NULL DEFAULT 30,
+  installments INTEGER NOT NULL DEFAULT 1, ratios JSONB NOT NULL DEFAULT '[]',
+  is_default BOOLEAN NOT NULL DEFAULT FALSE, is_active BOOLEAN NOT NULL DEFAULT TRUE, notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pterm UNIQUE (tenant_id, entity_id, code)
+);
+CREATE TABLE IF NOT EXISTS payment_term_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  term_id UUID NOT NULL REFERENCES payment_terms(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  installment_no INTEGER NOT NULL, pct NUMERIC(7,4) NOT NULL, days INTEGER NOT NULL, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_ptl UNIQUE (tenant_id, term_id, installment_no)
+);
+CREATE TABLE IF NOT EXISTS customer_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  doc_number VARCHAR(50) NOT NULL,
+  customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  pay_date DATE NOT NULL DEFAULT CURRENT_DATE, pay_method VARCHAR(20) NOT NULL DEFAULT 'cash',
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', exchange_rate NUMERIC(18,10) NOT NULL DEFAULT 1,
+  amount NUMERIC(18,3) NOT NULL CHECK (amount>0),
+  allocated_amount NUMERIC(18,3) NOT NULL DEFAULT 0, unallocated_amount NUMERIC(18,3) NOT NULL DEFAULT 0,
+  status VARCHAR(30) NOT NULL DEFAULT 'draft',
+  status_changed_at TIMESTAMPTZ, status_changed_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  posted_at TIMESTAMPTZ, posted_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  journal_entry_id UUID REFERENCES journal_entries(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  event_key VARCHAR(200), reference VARCHAR(100),
+  bank_account_info JSONB NOT NULL DEFAULT '{}', check_no VARCHAR(50), check_date DATE,
+  notes TEXT, metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_cpay_num UNIQUE (tenant_id, entity_id, doc_number),
+  CONSTRAINT ck_pay_status CHECK (status IN ('draft','confirmed','posted','reconciled','partially_reconciled','bounced','cancelled','refunded'))
+);
+CREATE TABLE IF NOT EXISTS customer_payment_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  payment_id UUID NOT NULL REFERENCES customer_payments(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  line_number INTEGER NOT NULL, pay_method VARCHAR(20) NOT NULL,
+  amount NUMERIC(18,3) NOT NULL, currency_id CHAR(3) NOT NULL DEFAULT 'JOD',
+  account_id UUID REFERENCES accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  reference VARCHAR(100), notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_cpl UNIQUE (payment_id, line_number)
+);
+CREATE TABLE IF NOT EXISTS payment_allocations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  payment_id UUID NOT NULL REFERENCES customer_payments(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  invoice_id UUID NOT NULL REFERENCES customer_invoices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  allocated_amount NUMERIC(18,3) NOT NULL CHECK (allocated_amount>0),
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', allocated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  allocated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_alloc UNIQUE (tenant_id, payment_id, invoice_id)
+);
+
+-- ================= G: مرتجعات وإشعارات (5) =================
+CREATE TABLE IF NOT EXISTS customer_returns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  doc_number VARCHAR(50) NOT NULL,
+  customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  invoice_id UUID REFERENCES customer_invoices(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  return_date DATE NOT NULL DEFAULT CURRENT_DATE, reason TEXT NOT NULL,
+  warehouse_id UUID REFERENCES warehouses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', total_amount NUMERIC(18,3) NOT NULL DEFAULT 0,
+  status VARCHAR(30) NOT NULL DEFAULT 'draft',
+  status_changed_at TIMESTAMPTZ, status_changed_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_cret_num UNIQUE (tenant_id, entity_id, doc_number)
+);
+CREATE TABLE IF NOT EXISTS customer_return_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  return_id UUID NOT NULL REFERENCES customer_returns(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  line_number INTEGER NOT NULL, product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  returned_qty NUMERIC(18,6) NOT NULL CHECK (returned_qty>0),
+  uom_id UUID REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  unit_price NUMERIC(18,3) NOT NULL, discount_pct NUMERIC(7,4) NOT NULL DEFAULT 0, tax_id UUID,
+  line_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  condition VARCHAR(20) NOT NULL DEFAULT 'good',
+  warehouse_id UUID REFERENCES warehouses(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_crl UNIQUE (return_id, line_number)
+);
+CREATE TABLE IF NOT EXISTS credit_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  doc_number VARCHAR(50) NOT NULL,
+  customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  invoice_id UUID REFERENCES customer_invoices(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  note_date DATE NOT NULL DEFAULT CURRENT_DATE, reason TEXT NOT NULL,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD',
+  subtotal NUMERIC(18,3) NOT NULL DEFAULT 0, tax_total NUMERIC(18,3) NOT NULL DEFAULT 0, grand_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  status VARCHAR(30) NOT NULL DEFAULT 'draft',
+  status_changed_at TIMESTAMPTZ, status_changed_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  journal_entry_id UUID REFERENCES journal_entries(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  event_key VARCHAR(200), notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_cn_num UNIQUE (tenant_id, entity_id, doc_number)
+);
+CREATE TABLE IF NOT EXISTS credit_note_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  note_id UUID NOT NULL REFERENCES credit_notes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  line_number INTEGER NOT NULL, product_id UUID REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  qty NUMERIC(18,6) NOT NULL, unit_price NUMERIC(18,3) NOT NULL,
+  discount_pct NUMERIC(7,4) NOT NULL DEFAULT 0, tax_id UUID,
+  line_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  account_id UUID REFERENCES accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_cnl UNIQUE (note_id, line_number)
+);
+CREATE TABLE IF NOT EXISTS debit_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  doc_number VARCHAR(50) NOT NULL,
+  customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  invoice_id UUID REFERENCES customer_invoices(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  note_date DATE NOT NULL DEFAULT CURRENT_DATE, reason TEXT NOT NULL,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD',
+  subtotal NUMERIC(18,3) NOT NULL DEFAULT 0, tax_total NUMERIC(18,3) NOT NULL DEFAULT 0, grand_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  status VARCHAR(30) NOT NULL DEFAULT 'draft',
+  status_changed_at TIMESTAMPTZ, status_changed_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_dn_num UNIQUE (tenant_id, entity_id, doc_number)
+);
+
+-- ================= H: إيراد مؤجل (3) =================
+CREATE TABLE IF NOT EXISTS revenue_recognition_schedules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  invoice_id UUID REFERENCES customer_invoices(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  contract_ref VARCHAR(100), starts_on DATE NOT NULL, ends_on DATE NOT NULL,
+  total_amount NUMERIC(18,3) NOT NULL, currency_id CHAR(3) NOT NULL DEFAULT 'JOD',
+  method VARCHAR(20) NOT NULL DEFAULT 'time',
+  status VARCHAR(20) NOT NULL DEFAULT 'open', notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT ck_rr_dates CHECK (ends_on >= starts_on)
+);
+CREATE TABLE IF NOT EXISTS revenue_recognition_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  schedule_id UUID NOT NULL REFERENCES revenue_recognition_schedules(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  fiscal_period_id UUID REFERENCES fiscal_periods(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  recognized_amount NUMERIC(18,3) NOT NULL, remaining_amount NUMERIC(18,3) NOT NULL,
+  recognized_on DATE NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  journal_entry_id UUID REFERENCES journal_entries(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS deferred_revenue_balances (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  invoice_id UUID REFERENCES customer_invoices(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  original_amount NUMERIC(18,3) NOT NULL, recognized_amount NUMERIC(18,3) NOT NULL DEFAULT 0,
+  remaining_amount NUMERIC(18,3) GENERATED ALWAYS AS (original_amount - recognized_amount) STORED,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', refreshed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- ================= I: POS وJoFotara (4) =================
+CREATE TABLE IF NOT EXISTS pos_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  pos_code VARCHAR(50) NOT NULL, user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), closed_at TIMESTAMPTZ,
+  opening_amount NUMERIC(18,3) NOT NULL DEFAULT 0, closing_amount NUMERIC(18,3) NOT NULL DEFAULT 0,
+  expected_amount NUMERIC(18,3) NOT NULL DEFAULT 0, diff_amount NUMERIC(18,3) NOT NULL DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'open', notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS pos_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  session_id UUID NOT NULL REFERENCES pos_sessions(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  doc_number VARCHAR(50) NOT NULL, customer_id UUID REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  order_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  subtotal NUMERIC(18,3) NOT NULL DEFAULT 0, discount_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  tax_total NUMERIC(18,3) NOT NULL DEFAULT 0, grand_total NUMERIC(18,3) NOT NULL DEFAULT 0,
+  pay_method VARCHAR(20) NOT NULL DEFAULT 'cash', status VARCHAR(20) NOT NULL DEFAULT 'draft', notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pos_num UNIQUE (tenant_id, session_id, doc_number)
+);
+CREATE TABLE IF NOT EXISTS pos_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  order_id UUID NOT NULL REFERENCES pos_orders(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  pay_method VARCHAR(20) NOT NULL, amount NUMERIC(18,3) NOT NULL,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', reference VARCHAR(100),
+  status VARCHAR(20) NOT NULL DEFAULT 'confirmed', notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS einvoicing_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  invoice_id UUID NOT NULL REFERENCES customer_invoices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  einv_status VARCHAR(20) NOT NULL DEFAULT 'queued',
+  priority INTEGER NOT NULL DEFAULT 100, attempts INTEGER NOT NULL DEFAULT 0,
+  last_attempt_at TIMESTAMPTZ, last_error TEXT,
+  sent_at TIMESTAMPTZ, responded_at TIMESTAMPTZ, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT ck_eq_status CHECK (einv_status IN ('queued','sending','sent','accepted','rejected','failed','retrying','cancelled'))
+);
+
+-- ================= J: الأعمار (2) =================
+CREATE TABLE IF NOT EXISTS aging_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  customer_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  snapshot_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  total_balance NUMERIC(18,3) NOT NULL DEFAULT 0, current_balance NUMERIC(18,3) NOT NULL DEFAULT 0,
+  d_1_30 NUMERIC(18,3) NOT NULL DEFAULT 0, d_31_60 NUMERIC(18,3) NOT NULL DEFAULT 0,
+  d_61_90 NUMERIC(18,3) NOT NULL DEFAULT 0, d_over_90 NUMERIC(18,3) NOT NULL DEFAULT 0,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_aging UNIQUE (tenant_id, entity_id, customer_id, snapshot_date)
+);
+CREATE TABLE IF NOT EXISTS aging_snapshot_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  snapshot_id UUID NOT NULL REFERENCES aging_snapshots(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  invoice_id UUID NOT NULL REFERENCES customer_invoices(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  invoice_date DATE NOT NULL, due_on DATE NOT NULL,
+  original_amount NUMERIC(18,3) NOT NULL, remaining_amount NUMERIC(18,3) NOT NULL,
+  age_days INTEGER NOT NULL, bucket VARCHAR(20) NOT NULL, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- ================= فهارس وRLS وTriggers =================
+CREATE INDEX IF NOT EXISTS idx_so_customer ON sales_orders(customer_id, status) WHERE is_deleted=FALSE;
+CREATE INDEX IF NOT EXISTS idx_inv_customer_due ON customer_invoices(customer_id, due_on) WHERE is_deleted=FALSE;
+CREATE INDEX IF NOT EXISTS idx_inv_einv ON customer_invoice_einvoicing(einv_status) WHERE is_deleted=FALSE;
+CREATE INDEX IF NOT EXISTS idx_alloc_pay_inv ON payment_allocations(payment_id, invoice_id);
+CREATE INDEX IF NOT EXISTS idx_pay_inv_status ON customer_payments(customer_id, status) WHERE is_deleted=FALSE;
+CREATE INDEX IF NOT EXISTS idx_eq_status ON einvoicing_queue(einv_status) WHERE is_deleted=FALSE;
+CREATE INDEX IF NOT EXISTS gin_so_meta ON sales_orders USING GIN (metadata);
+
+-- منع تعديل الفاتورة المرحلة + تحديث المتبقي عند التخصيص
+CREATE OR REPLACE FUNCTION fn_forbid_posted_invoice() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.status = 'posted' THEN
+    IF NEW.grand_total IS NOT DISTINCT FROM OLD.grand_total
+       AND NEW.subtotal IS NOT DISTINCT FROM OLD.subtotal
+       AND NEW.tax_total IS NOT DISTINCT FROM OLD.tax_total
+       AND NEW.invoice_date IS NOT DISTINCT FROM OLD.invoice_date
+       AND NEW.customer_id IS NOT DISTINCT FROM OLD.customer_id
+       AND NEW.currency_id IS NOT DISTINCT FROM OLD.currency_id THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'POSTED_INVOICE_IMMUTABLE %', OLD.id;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_inv_immutable ON customer_invoices;
+CREATE TRIGGER trg_inv_immutable BEFORE UPDATE OR DELETE ON customer_invoices FOR EACH ROW EXECUTE FUNCTION fn_forbid_posted_invoice();
+
+CREATE OR REPLACE FUNCTION fn_allocation_rollup() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE v_paid NUMERIC(18,3);
+BEGIN
+  SELECT COALESCE(SUM(allocated_amount),0) INTO v_paid FROM payment_allocations WHERE invoice_id=COALESCE(NEW.invoice_id,OLD.invoice_id) AND is_deleted=FALSE;
+  UPDATE customer_invoices SET paid_amount=v_paid, remaining_amount=grand_total-v_paid,
+    status=CASE WHEN v_paid=0 THEN status WHEN v_paid>=grand_total THEN 'paid' ELSE 'partially_paid' END
+   WHERE id=COALESCE(NEW.invoice_id,OLD.invoice_id);
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_alloc_rollup ON payment_allocations;
+CREATE TRIGGER trg_alloc_rollup AFTER INSERT OR UPDATE OR DELETE ON payment_allocations FOR EACH ROW EXECUTE FUNCTION fn_allocation_rollup();
+
+-- منع بيع عميل محظور
+CREATE OR REPLACE FUNCTION fn_blocked_customer() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN IF (SELECT status FROM parties WHERE id=NEW.customer_id)='blocked' THEN RAISE EXCEPTION 'CUSTOMER_BLOCKED %', NEW.customer_id; END IF; RETURN NEW; END $$;
+DROP TRIGGER IF EXISTS trg_so_blocked ON sales_orders;
+CREATE TRIGGER trg_so_blocked BEFORE INSERT OR UPDATE ON sales_orders FOR EACH ROW EXECUTE FUNCTION fn_blocked_customer();
+DROP TRIGGER IF EXISTS trg_inv_blocked ON customer_invoices;
+CREATE TRIGGER trg_inv_blocked BEFORE INSERT OR UPDATE ON customer_invoices FOR EACH ROW EXECUTE FUNCTION fn_blocked_customer();
+
+DO $$ DECLARE t TEXT; arr TEXT[] := ARRAY['sales_teams','sales_team_members','sales_reps','sales_targets','sales_commissions','quotations','quotation_lines','quotation_versions','quotation_approvals','sales_orders','sales_order_lines','sales_order_versions','sales_order_amendments','deliveries','delivery_lines','delivery_packages','delivery_tracking','customer_invoices','customer_invoice_lines','customer_invoice_taxes','customer_invoice_versions','customer_invoice_einvoicing','customer_payments','customer_payment_lines','payment_allocations','payment_terms','payment_term_lines','customer_returns','customer_return_lines','credit_notes','credit_note_lines','debit_notes','revenue_recognition_schedules','revenue_recognition_entries','deferred_revenue_balances','pos_sessions','pos_orders','pos_payments','einvoicing_queue','aging_snapshots','aging_snapshot_lines'];
+BEGIN FOREACH t IN ARRAY arr LOOP
+EXECUTE format('DROP TRIGGER IF EXISTS trg_%s_touch ON %I',t,t);
+EXECUTE format('CREATE TRIGGER trg_%s_touch BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION fn_touch_updated_at()',t,t);
+EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',t);
+EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY',t);
+IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename=t AND policyname='tenant_iso_sel') THEN
+EXECUTE format('CREATE POLICY tenant_iso_sel ON %I FOR SELECT USING (tenant_id = NULLIF(current_setting(%L,true),%L)::UUID)',t,'app.current_tenant_id','');
+EXECUTE format('CREATE POLICY tenant_iso_ins ON %I FOR INSERT WITH CHECK (tenant_id = NULLIF(current_setting(%L,true),%L)::UUID)',t,'app.current_tenant_id','');
+EXECUTE format('CREATE POLICY tenant_iso_upd ON %I FOR UPDATE USING (tenant_id = NULLIF(current_setting(%L,true),%L)::UUID)',t,'app.current_tenant_id','');
+EXECUTE format('CREATE POLICY tenant_iso_del ON %I FOR DELETE USING (tenant_id = NULLIF(current_setting(%L,true),%L)::UUID)',t,'app.current_tenant_id','');
+END IF; END LOOP; END $$;
+
+-- Seed: شروط الدفع (فوري/30/60/أقساط) تُزرع لكل entity عبر التطبيق؛ net_30 افتراضياً.
+COMMENT ON TABLE customer_invoices IS 'فواتير العملاء — المرحلة تُجمّد (Trigger) والقيد عبر EventContract | Invoices';
+COMMENT ON TABLE payment_allocations IS 'تخصيص الدفعات — يُحدّث المتبقي والحالة تلقائياً | Allocations roll up';
+COMMENT ON TABLE einvoicing_queue IS 'طابور JoFotara — retry آلي ثم DLQ | E-invoicing queue';

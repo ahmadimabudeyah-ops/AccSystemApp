@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% include "partials/sidebar.html" %}
+  <div class="main-col">
+    {% include "partials/header.html" %}
+    <main class="content">
+      {% include "partials/breadcrumbs.html" %}
+      {% include "partials/flash_messages.html" %}
+      {% block content %}{% endblock %}
+      {% include "partials/footer.html" %}
+    </main>
+  </div>
+</div>
+<div class="toast-stack"></div>
+{% include "partials/confirm_modal.html" %}
+{% endblock %}

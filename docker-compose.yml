@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: acc_system
+      POSTGRES_USER: acc_app
+      POSTGRES_PASSWORD: ${PGPASSWORD:-change-me-in-vault}
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/sql:/opt/sql:ro
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command: ["-c", "config_file=/etc/postgresql/postgresql.conf"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U acc_app"], interval: 10s, retries: 5 }
+  db-init:
+    image: postgres:16-alpine
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      PGHOST: postgres
+      PGUSER: acc_app
+      PGPASSWORD: ${PGPASSWORD:-change-me-in-vault}
+      PGDATABASE: acc_system
+    volumes:
+      - ./db/sql:/opt/sql:ro
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        # Explicit init order — see db/sql/README.md. Drafts 00_*..34_* are NEVER applied.
+        for f in /opt/sql/phase1_foundation.sql /opt/sql/phase2_policies_periods.sql /opt/sql/phase3_accounts_dimensions.sql /opt/sql/phase4_engine.sql /opt/sql/phase5_parties.sql /opt/sql/phase6_products_inventory.sql /opt/sql/phase7_sales.sql /opt/sql/phase8_treasury_assets_taxes.sql /opt/sql/phase9_purchases.sql /opt/sql/phase10_payroll.sql /opt/sql/phase11_education.sql /opt/sql/phase12_projects_budgets_audit.sql /opt/sql/phase13_procurement_docs.sql /opt/sql/seed_engine_permissions.sql /opt/sql/seed_module_permissions.sql /opt/sql/seed_rbac_permissions.sql; do
+          echo "applying $$f"; psql -v ON_ERROR_STOP=1 -f "$$f";
+        done
+        for f in /opt/sql/fix_*.sql; do echo "applying $$f"; psql -v ON_ERROR_STOP=1 -f "$$f"; done
+        echo "db-init done"
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22
+    environment: { DATABASES_HOST: postgres, DATABASES_PORT: 5432, DATABASES_USER: acc_app, POOL_MODE: transaction, MAX_CLIENT_CONN: 500, DEFAULT_POOL_SIZE: 25 }
+    ports: ["6432:6432"]
+    depends_on: [postgres]
+volumes: { pgdata: {} }

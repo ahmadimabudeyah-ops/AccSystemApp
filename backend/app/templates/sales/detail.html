@@ -1,0 +1,90 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<div id="doc-detail" data-kind="{{ doc_kind }}" data-id="{{ doc_id }}">
+  <div class="d-flex justify-between align-center mb-3">
+    <h1>{{ page.title }} <span id="d-no">…</span> <span class="badge badge-draft" id="d-status">…</span></h1>
+    <div class="d-flex gap-2" id="d-actions">
+      {% for a in page.actions or [] %}
+        {% if a.api %}
+          <button class="btn btn-{{ a.style or 'primary' }}" data-docaction="{{ a.api_action }}" data-base="{{ a.api_base }}" data-id="{{ a.api_id }}"> {{ a.label }}</button>
+        {% elif a.method == 'post' %}
+          <form method="post" action="{{ a.url }}" style="display:inline"><button class="btn btn-{{ a.style or 'secondary' }}" type="submit">{{ a.label }}</button></form>
+        {% else %}
+          <a class="btn btn-{{ a.style or 'secondary' }}" href="{{ a.url }}">{{ a.label }}</a>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% for s in page.sections or [] %}
+  <div class="card mb-3"><h3>{{ s.title }}</h3>
+    {% for row in s.rows %}<div class="d-flex gap-2"><span>{{ row[0] }}:</span><strong>{{ row[1] }}</strong></div>{% endfor %}
+  </div>
+  {% endfor %}
+  <div class="card mb-3"><div class="d-flex gap-3" id="d-head"></div></div>
+  <div class="card"><h3>البنود</h3>
+    <div class="table-wrap"><table class="table-lux">
+      <thead><tr><th>#</th><th>البيان</th><th class="num">الكمية</th><th class="num">السعر</th><th class="num">الإجمالي</th></tr></thead>
+      <tbody id="d-lines"><tr><td colspan="5"><div class="skeleton"></div></td></tr></tbody>
+    </table></div>
+    <div class="mt-3 d-flex gap-3">
+      <span>الإجمالي الفرعي: <strong class="num" id="d-sub">…</strong></span>
+      <span>الضريبة: <strong class="num" id="d-tax">…</strong></span>
+      <span>الكلي: <strong class="num" id="d-grand">…</strong></span>
+      <span>المتبقي: <strong class="num" id="d-rem">…</strong></span>
+    </div>
+  </div>
+  <div class="card mt-3" id="pay-box" hidden>
+    <h3>تسجيل دفعة وتخصيصها (تُرحّل قبل التخصيص)</h3>
+    <div class="d-flex gap-2 align-center">
+      <input class="form-control num ltr" id="pay-amount" type="number" step="0.001" placeholder="المبلغ">
+      <select class="form-control" id="pay-cash" data-source="accounts" data-postable><option value="">حساب النقدية…</option></select>
+      <button class="btn btn-gold" id="pay-btn">دفع وترحيل وتخصيص</button>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const box = document.getElementById("pay-box");
+  if (!box) return;
+  // تعبئة حسابات النقدية
+  try {
+    var cashSel = document.getElementById("pay-cash");
+  } catch (e) {}
+  const watch = setInterval(() => {
+    const rem = parseFloat(document.getElementById("d-rem")?.textContent || 0);
+    if (document.getElementById("d-no")?.textContent !== "…") {
+      clearInterval(watch);
+      if (rem > 0) {
+        box.hidden = false;
+        document.getElementById("pay-amount").value = rem;
+        document.getElementById("pay-btn").addEventListener("click", async () => {
+          const amt = parseFloat(document.getElementById("pay-amount").value || 0);
+          const cashId = document.getElementById("pay-cash").value;
+          if (!(amt > 0)) { window.toast("مبلغ غير صالح", "error"); return; }
+          if (!cashId) { window.toast("اختر حساب النقدية للترحيل", "error"); return; }
+          const root = document.getElementById("doc-detail");
+          const invId = root.dataset.id;
+          const eid = sessionStorage.getItem("entity_id");
+          const inv = await (await fetch(`/api/v1/sales/invoices/${invId}`, { headers: window.apiHeaders() })).json();
+          const cp = await (await fetch("/api/v1/sales/payments", { method: "POST",
+            headers: window.apiHeaders(),
+            body: JSON.stringify({ entity_id: eid, customer_id: inv.data.customer_id,
+              amount: amt, pay_method: "cash" }) })).json();
+          if (!cp.data || !cp.data.id) { window.toast("تعذر إنشاء الدفعة", "error"); return; }
+          const post = await fetch(`/api/v1/sales/payments/${cp.data.id}/post`, { method: "POST",
+            headers: window.apiHeaders(),
+            body: JSON.stringify({ cash_account_id: cashId }) });
+          if (!post.ok) { window.toast("أُنشئت الدفعة لكن تعذر ترحيل القيد — راجع الحساب", "error"); return; }
+          const al = await fetch(`/api/v1/sales/payments/${cp.data.id}/allocate`, { method: "POST",
+            headers: window.apiHeaders(),
+            body: JSON.stringify({ allocations: [{ invoice_id: invId, allocated_amount: amt }] }) });
+          if (al.ok) window.location.reload();
+          else window.toast("رُحّلت الدفعة لكن تعذر التخصيص", "error");
+        });
+      }
+    }
+  }, 400);
+});
+</script>
+{% endblock %}

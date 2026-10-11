@@ -1,0 +1,716 @@
+-- ============================================================================
+-- Phase 6 — الأصناف والمخزون (44 جدول) | Requires: phase1 (+3 accounts, +5 parties)
+-- ملاحظة: product_taxes.tax_id بلا FK (الضرائب phase لاحقة)؛ FK يُشدّد حينها.
+-- الكميات NUMERIC(18,6)، المبالغ (18,3). stock_quants كاش قابل لإعادة البناء.
+-- ============================================================================
+-- قالب الأعمدة الإلزامية مختصر: id/tenant/entity/created_*/updated_*/version/deleted_*/is_deleted
+-- (مكتوبة صراحة في كل جدول أدناه للتنفيذ المباشر).
+
+-- ================= A: الأصناف (6) =================
+CREATE TABLE IF NOT EXISTS product_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(500) NOT NULL, name_en VARCHAR(500),
+  parent_id UUID REFERENCES product_categories(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  level INTEGER NOT NULL DEFAULT 1, path TEXT NOT NULL DEFAULT '',
+  default_revenue_account UUID REFERENCES accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  default_expense_account UUID REFERENCES accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  default_stock_account UUID REFERENCES accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_product_categories_code UNIQUE (tenant_id, entity_id, code)
+);
+CREATE TABLE IF NOT EXISTS product_category_hierarchy (
+  ancestor_id UUID NOT NULL REFERENCES product_categories(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  descendant_id UUID NOT NULL REFERENCES product_categories(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  depth INTEGER NOT NULL CHECK (depth>=0), sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (ancestor_id, descendant_id)
+);
+CREATE TABLE IF NOT EXISTS product_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL, name_en VARCHAR(255),
+  description TEXT, is_stockable BOOLEAN NOT NULL DEFAULT TRUE, is_service BOOLEAN NOT NULL DEFAULT FALSE, is_system BOOLEAN NOT NULL DEFAULT TRUE,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_ptype_code UNIQUE (tenant_id, code)
+);
+CREATE TABLE IF NOT EXISTS products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(500) NOT NULL, name_en VARCHAR(500),
+  product_type VARCHAR(30) NOT NULL DEFAULT 'stockable',
+  category_id UUID REFERENCES product_categories(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  base_uom_id UUID, purchase_uom_id UUID, sale_uom_id UUID, -- FK إلى uoms (يُنشأ أدناه؛ يُشدّد بترحيل لاحق إن لزم)
+  cost_method VARCHAR(20) NOT NULL DEFAULT 'average',
+  standard_cost NUMERIC(18,3) NOT NULL DEFAULT 0, sale_price NUMERIC(18,3) NOT NULL DEFAULT 0, avg_cost NUMERIC(18,3) NOT NULL DEFAULT 0,
+  track_serial BOOLEAN NOT NULL DEFAULT FALSE, track_lot BOOLEAN NOT NULL DEFAULT FALSE, track_expiry BOOLEAN NOT NULL DEFAULT FALSE,
+  expiry_days INTEGER CHECK (expiry_days IS NULL OR expiry_days > 0),
+  reorder_min NUMERIC(18,6) NOT NULL DEFAULT 0, reorder_max NUMERIC(18,6) NOT NULL DEFAULT 0, reorder_qty NUMERIC(18,6) NOT NULL DEFAULT 0,
+  lead_days INTEGER NOT NULL DEFAULT 0,
+  weight NUMERIC(18,6) NOT NULL DEFAULT 0, volume NUMERIC(18,6) NOT NULL DEFAULT 0, dims JSONB NOT NULL DEFAULT '{}',
+  image_url TEXT, status VARCHAR(30) NOT NULL DEFAULT 'draft', notes TEXT, metadata JSONB NOT NULL DEFAULT '{}',
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_products_code UNIQUE (tenant_id, entity_id, code),
+  CONSTRAINT ck_ptype CHECK (product_type IN ('stockable','service','consumable','kit','subscription','asset','digital')),
+  CONSTRAINT ck_costm CHECK (cost_method IN ('fifo','lifo','average','standard','specific')),
+  CONSTRAINT ck_pstatus CHECK (status IN ('draft','active','inactive','discontinued'))
+);
+CREATE TABLE IF NOT EXISTS product_attributes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL, name_en VARCHAR(255),
+  attr_type VARCHAR(20) NOT NULL DEFAULT 'text',
+  is_required BOOLEAN NOT NULL DEFAULT FALSE, is_filterable BOOLEAN NOT NULL DEFAULT TRUE, is_searchable BOOLEAN NOT NULL DEFAULT FALSE,
+  sort_order INTEGER NOT NULL DEFAULT 0, allowed_values JSONB NOT NULL DEFAULT '[]',
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pattr_code UNIQUE (tenant_id, entity_id, code)
+);
+CREATE TABLE IF NOT EXISTS product_attribute_values (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  attribute_id UUID NOT NULL REFERENCES product_attributes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, value_ar VARCHAR(500) NOT NULL, value_en VARCHAR(500),
+  sort_order INTEGER NOT NULL DEFAULT 0, color VARCHAR(20), image_url TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pattrval UNIQUE (tenant_id, attribute_id, code)
+);
+
+-- ================= B: المتغيرات (3) =================
+CREATE TABLE IF NOT EXISTS product_variants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, barcode VARCHAR(100), name_ar VARCHAR(500) NOT NULL,
+  attrs JSONB NOT NULL DEFAULT '{}', sale_price NUMERIC(18,3) NOT NULL DEFAULT 0, cost_price NUMERIC(18,3) NOT NULL DEFAULT 0,
+  weight NUMERIC(18,6) NOT NULL DEFAULT 0, image_url TEXT, status VARCHAR(30) NOT NULL DEFAULT 'active',
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pvar_code UNIQUE (tenant_id, product_id, code)
+);
+CREATE TABLE IF NOT EXISTS product_variant_attributes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  variant_id UUID NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  attribute_id UUID NOT NULL REFERENCES product_attributes(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  value_id UUID REFERENCES product_attribute_values(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pvarattr UNIQUE (tenant_id, variant_id, attribute_id)
+);
+CREATE TABLE IF NOT EXISTS product_barcodes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  variant_id UUID REFERENCES product_variants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  barcode VARCHAR(100) NOT NULL, barcode_type VARCHAR(20) NOT NULL DEFAULT 'EAN13',
+  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_barcode UNIQUE (tenant_id, barcode)
+);
+
+-- ================= C: الوحدات (5) =================
+CREATE TABLE IF NOT EXISTS uom_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL, name_en VARCHAR(255),
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_uomcat UNIQUE (tenant_id, code)
+);
+CREATE TABLE IF NOT EXISTS uoms (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(30) NOT NULL, name_ar VARCHAR(255) NOT NULL, name_en VARCHAR(255),
+  category_id UUID REFERENCES uom_categories(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  factor NUMERIC(18,10) NOT NULL DEFAULT 1 CHECK (factor > 0),
+  precision_digits INTEGER NOT NULL DEFAULT 3, rounding VARCHAR(20) NOT NULL DEFAULT 'half_up',
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_uom_code UNIQUE (tenant_id, code)
+);
+CREATE TABLE IF NOT EXISTS uom_conversions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  from_uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  to_uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  factor NUMERIC(18,10) NOT NULL CHECK (factor > 0),
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_uomconv UNIQUE (tenant_id, from_uom_id, to_uom_id),
+  CONSTRAINT ck_uomconv_self CHECK (from_uom_id <> to_uom_id)
+);
+CREATE TABLE IF NOT EXISTS product_uoms (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  uom_role VARCHAR(20) NOT NULL DEFAULT 'base',
+  factor NUMERIC(18,10) NOT NULL DEFAULT 1 CHECK (factor > 0),
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_puom UNIQUE (tenant_id, product_id, uom_id)
+);
+CREATE TABLE IF NOT EXISTS product_uom_conversions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  from_uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  to_uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  factor NUMERIC(18,10) NOT NULL CHECK (factor > 0),
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_puomconv UNIQUE (tenant_id, product_id, from_uom_id, to_uom_id)
+);
+
+-- ================= D: الأسعار والحسابات (6) =================
+CREATE TABLE IF NOT EXISTS price_lists (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL, name_en VARCHAR(255),
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD',
+  discount_type VARCHAR(20) NOT NULL DEFAULT 'percent',
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  priority INTEGER NOT NULL DEFAULT 100, is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pricelist UNIQUE (tenant_id, entity_id, code)
+);
+CREATE TABLE IF NOT EXISTS price_list_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  price_list_id UUID NOT NULL REFERENCES price_lists(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  category_id UUID REFERENCES product_categories(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  unit_price NUMERIC(18,3) NOT NULL CHECK (unit_price >= 0),
+  min_qty NUMERIC(18,6) NOT NULL DEFAULT 0, discount NUMERIC(18,3) NOT NULL DEFAULT 0, discount_type VARCHAR(20) NOT NULL DEFAULT 'percent',
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pli UNIQUE (tenant_id, price_list_id, product_id, min_qty)
+);
+CREATE TABLE IF NOT EXISTS product_prices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  price_list_id UUID NOT NULL REFERENCES price_lists(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  price NUMERIC(18,3) NOT NULL CHECK (price >= 0), currency_id CHAR(3) NOT NULL DEFAULT 'JOD',
+  min_qty NUMERIC(18,6) NOT NULL DEFAULT 0,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS product_taxes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  tax_id UUID NOT NULL, -- FK إلى taxes (phase الضرائب) — يُشدّد لاحقاً
+  tax_role VARCHAR(20) NOT NULL DEFAULT 'sale',
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_ptax UNIQUE (tenant_id, product_id, tax_id, tax_role)
+);
+CREATE TABLE IF NOT EXISTS product_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  account_role VARCHAR(30) NOT NULL, -- revenue/expense/stock/cogs
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pacc UNIQUE (tenant_id, product_id, account_role)
+);
+CREATE TABLE IF NOT EXISTS product_suppliers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  supplier_id UUID NOT NULL REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  buy_price NUMERIC(18,3) NOT NULL DEFAULT 0, currency_id CHAR(3) NOT NULL DEFAULT 'JOD',
+  min_qty NUMERIC(18,6) NOT NULL DEFAULT 0, lead_days INTEGER NOT NULL DEFAULT 0,
+  supplier_code VARCHAR(100), is_preferred BOOLEAN NOT NULL DEFAULT FALSE,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_psup UNIQUE (tenant_id, product_id, supplier_id)
+);
+
+-- ================= E: المستودعات (4) =================
+CREATE TABLE IF NOT EXISTS warehouses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL, name_en VARCHAR(255),
+  address JSONB, manager_id UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  branch_id UUID REFERENCES branches(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  default_receipt_location UUID, default_delivery_location UUID, default_production_location UUID, default_scrap_location UUID,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_wh_code UNIQUE (tenant_id, entity_id, code)
+);
+CREATE TABLE IF NOT EXISTS warehouse_zones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL,
+  zone_type VARCHAR(20) NOT NULL DEFAULT 'storage',
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_whz UNIQUE (tenant_id, warehouse_id, code)
+);
+CREATE TABLE IF NOT EXISTS location_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL, name_en VARCHAR(255),
+  description TEXT, is_system BOOLEAN NOT NULL DEFAULT TRUE,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_loctype UNIQUE (tenant_id, code)
+);
+CREATE TABLE IF NOT EXISTS locations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  zone_id UUID REFERENCES warehouse_zones(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, name_ar VARCHAR(255) NOT NULL,
+  location_type VARCHAR(20) NOT NULL DEFAULT 'internal',
+  parent_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  level INTEGER NOT NULL DEFAULT 1, path TEXT NOT NULL DEFAULT '',
+  is_storable BOOLEAN NOT NULL DEFAULT TRUE, is_movable BOOLEAN NOT NULL DEFAULT TRUE,
+  max_capacity NUMERIC(18,6),
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_loc_code UNIQUE (tenant_id, warehouse_id, code),
+  CONSTRAINT ck_loc_type CHECK (location_type IN ('internal','supplier','customer','inventory','production','transit','scrap','view'))
+);
+
+-- ================= F: الحركات (8) =================
+CREATE TABLE IF NOT EXISTS stock_moves (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  variant_id UUID REFERENCES product_variants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  qty NUMERIC(18,6) NOT NULL CHECK (qty > 0),
+  source_location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  dest_location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  move_type VARCHAR(20) NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  reference VARCHAR(100), source_document_id UUID,
+  lot_id UUID, serial_id UUID, owner_id UUID REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE, package_id UUID,
+  move_date DATE NOT NULL DEFAULT CURRENT_DATE, done_at TIMESTAMPTZ,
+  unit_cost NUMERIC(18,6) NOT NULL DEFAULT 0, total_cost NUMERIC(18,3) NOT NULL DEFAULT 0,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', exchange_rate NUMERIC(18,10) NOT NULL DEFAULT 1,
+  functional_amount NUMERIC(18,3) NOT NULL DEFAULT 0,
+  notes TEXT, metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT ck_mtype CHECK (move_type IN ('receipt','delivery','internal','adjustment','scrap','return','manufacturing','transit','consignment_in','consignment_out')),
+  CONSTRAINT ck_mstatus CHECK (status IN ('draft','confirmed','assigned','in_progress','done','cancelled'))
+);
+CREATE TABLE IF NOT EXISTS stock_move_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  move_id UUID NOT NULL REFERENCES stock_moves(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  qty NUMERIC(18,6) NOT NULL CHECK (qty > 0), uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  lot_id UUID, serial_id UUID, location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft', move_date DATE NOT NULL DEFAULT CURRENT_DATE, done_at TIMESTAMPTZ, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS stock_quants (
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  variant_id UUID REFERENCES product_variants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  lot_id UUID, serial_id UUID, owner_id UUID REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE, package_id UUID,
+  qty NUMERIC(18,6) NOT NULL DEFAULT 0, reserved_qty NUMERIC(18,6) NOT NULL DEFAULT 0,
+  available_qty NUMERIC(18,6) GENERATED ALWAYS AS (qty - reserved_qty) STORED,
+  refreshed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (product_id, location_id)
+);
+CREATE TABLE IF NOT EXISTS stock_reservations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  location_id UUID NOT NULL REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  lot_id UUID, serial_id UUID, qty NUMERIC(18,6) NOT NULL CHECK (qty > 0),
+  source_document_id UUID, status VARCHAR(20) NOT NULL DEFAULT 'active',
+  reserved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT ck_res_status CHECK (status IN ('active','released','cancelled'))
+);
+CREATE TABLE IF NOT EXISTS stock_valuation_layers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  original_qty NUMERIC(18,6) NOT NULL CHECK (original_qty > 0), remaining_qty NUMERIC(18,6) NOT NULL CHECK (remaining_qty >= 0),
+  unit_cost NUMERIC(18,6) NOT NULL CHECK (unit_cost >= 0), total_cost NUMERIC(18,3) NOT NULL,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', layer_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  reference VARCHAR(100), source_document_id UUID, status VARCHAR(20) NOT NULL DEFAULT 'active', notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS stock_valuation_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  layer_id UUID NOT NULL REFERENCES stock_valuation_layers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  move_id UUID REFERENCES stock_moves(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entry_kind VARCHAR(20) NOT NULL, qty NUMERIC(18,6) NOT NULL,
+  unit_cost NUMERIC(18,6) NOT NULL, cost NUMERIC(18,3) NOT NULL,
+  currency_id CHAR(3) NOT NULL DEFAULT 'JOD', entry_date DATE NOT NULL DEFAULT CURRENT_DATE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT ck_sve_kind CHECK (entry_kind IN ('in','out','adjust'))
+);
+CREATE TABLE IF NOT EXISTS inventory_adjustments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  adjust_date DATE NOT NULL DEFAULT CURRENT_DATE, reason TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS inventory_adjustment_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  adjustment_id UUID NOT NULL REFERENCES inventory_adjustments(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  lot_id UUID, serial_id UUID,
+  theoretical_qty NUMERIC(18,6) NOT NULL DEFAULT 0, actual_qty NUMERIC(18,6) NOT NULL,
+  diff_qty NUMERIC(18,6) GENERATED ALWAYS AS (actual_qty - theoretical_qty) STORED,
+  unit_cost NUMERIC(18,6) NOT NULL DEFAULT 0, total_cost NUMERIC(18,3) NOT NULL DEFAULT 0, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- ================= G: الجرد والدفعات (5) =================
+CREATE TABLE IF NOT EXISTS inventory_counts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  starts_on DATE NOT NULL, ends_on DATE,
+  status VARCHAR(20) NOT NULL DEFAULT 'open',
+  assignee UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS inventory_count_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  count_id UUID NOT NULL REFERENCES inventory_counts(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  lot_id UUID, serial_id UUID,
+  theoretical_qty NUMERIC(18,6) NOT NULL DEFAULT 0, counted_qty NUMERIC(18,6) NOT NULL,
+  diff_qty NUMERIC(18,6) GENERATED ALWAYS AS (counted_qty - theoretical_qty) STORED,
+  unit_cost NUMERIC(18,6) NOT NULL DEFAULT 0, total_cost NUMERIC(18,3) NOT NULL DEFAULT 0,
+  count_status VARCHAR(20) NOT NULL DEFAULT 'uncounted', notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS lots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  lot_number VARCHAR(100) NOT NULL, produced_on DATE, expires_on DATE,
+  supplier_id UUID REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  qty NUMERIC(18,6) NOT NULL DEFAULT 0, unit_cost NUMERIC(18,6) NOT NULL DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'active', notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_lot UNIQUE (tenant_id, product_id, lot_number)
+);
+CREATE TABLE IF NOT EXISTS serials (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  serial_number VARCHAR(100) NOT NULL, lot_id UUID REFERENCES lots(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'available',
+  received_on DATE, sold_on DATE,
+  supplier_id UUID REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  customer_id UUID REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_serial UNIQUE (tenant_id, product_id, serial_number)
+);
+CREATE TABLE IF NOT EXISTS packages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  code VARCHAR(50) NOT NULL, package_type VARCHAR(30) NOT NULL DEFAULT 'box',
+  capacity NUMERIC(18,6), location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'empty', notes TEXT,
+  valid_from DATE NOT NULL DEFAULT CURRENT_DATE, valid_to DATE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT uq_pkg UNIQUE (tenant_id, entity_id, code)
+);
+
+-- ================= H: التحويل والتالف (4) =================
+CREATE TABLE IF NOT EXISTS stock_transfers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  source_warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  dest_warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  transfer_date DATE NOT NULL DEFAULT CURRENT_DATE, status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT ck_transfer_wh CHECK (source_warehouse_id <> dest_warehouse_id)
+);
+CREATE TABLE IF NOT EXISTS stock_transfer_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  transfer_id UUID NOT NULL REFERENCES stock_transfers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  lot_id UUID REFERENCES lots(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  serial_id UUID REFERENCES serials(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  requested_qty NUMERIC(18,6) NOT NULL CHECK (requested_qty > 0),
+  moved_qty NUMERIC(18,6) NOT NULL DEFAULT 0,
+  uom_id UUID NOT NULL REFERENCES uoms(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS stock_scrap (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  location_id UUID REFERENCES locations(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  scrap_date DATE NOT NULL DEFAULT CURRENT_DATE, reason TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS stock_scrap_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  scrap_id UUID NOT NULL REFERENCES stock_scrap(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  lot_id UUID REFERENCES lots(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  serial_id UUID REFERENCES serials(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  qty NUMERIC(18,6) NOT NULL CHECK (qty > 0),
+  unit_cost NUMERIC(18,6) NOT NULL DEFAULT 0, total_cost NUMERIC(18,3) NOT NULL DEFAULT 0, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- ================= I: التكاليف الإضافية (3) =================
+CREATE TABLE IF NOT EXISTS landed_costs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  cost_type VARCHAR(30) NOT NULL, reference VARCHAR(100),
+  supplier_id UUID REFERENCES parties(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  amount NUMERIC(18,3) NOT NULL CHECK (amount >= 0), currency_id CHAR(3) NOT NULL DEFAULT 'JOD',
+  exchange_rate NUMERIC(18,10) NOT NULL DEFAULT 1, due_on DATE,
+  allocation_method VARCHAR(20) NOT NULL DEFAULT 'by_value',
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  approved_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS landed_cost_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  landed_cost_id UUID NOT NULL REFERENCES landed_costs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  source_document_id UUID, move_id UUID REFERENCES stock_moves(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  amount NUMERIC(18,3) NOT NULL, allocation_method VARCHAR(20) NOT NULL DEFAULT 'by_value',
+  allocated_value NUMERIC(18,3) NOT NULL DEFAULT 0, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS landed_cost_allocations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  landed_cost_id UUID NOT NULL REFERENCES landed_costs(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  line_id UUID NOT NULL REFERENCES landed_cost_lines(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  qty NUMERIC(18,6) NOT NULL, base_value NUMERIC(18,3) NOT NULL,
+  pct NUMERIC(7,4) NOT NULL, allocated_value NUMERIC(18,3) NOT NULL, notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  updated_by UUID REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  version INTEGER NOT NULL DEFAULT 1, deleted_at TIMESTAMPTZ, is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- ================= فهارس وRLS وTriggers (مولدات) =================
+CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_products_entity ON products(entity_id) WHERE is_deleted=FALSE;
+CREATE INDEX IF NOT EXISTS idx_moves_product_date ON stock_moves(product_id, move_date DESC);
+CREATE INDEX IF NOT EXISTS idx_moves_ref ON stock_moves(reference, source_document_id);
+CREATE INDEX IF NOT EXISTS idx_moves_locs ON stock_moves(source_location_id, dest_location_id);
+CREATE INDEX IF NOT EXISTS idx_quants_prod_loc ON stock_quants(product_id, location_id);
+CREATE INDEX IF NOT EXISTS idx_layers_product_date ON stock_valuation_layers(product_id, layer_date);
+CREATE INDEX IF NOT EXISTS idx_lots_expiry ON lots(expires_on) WHERE is_deleted=FALSE;
+CREATE INDEX IF NOT EXISTS idx_warehouses_active ON warehouses(entity_id, is_active) WHERE is_deleted=FALSE;
+CREATE INDEX IF NOT EXISTS gin_products_meta ON products USING GIN (metadata);
+CREATE INDEX IF NOT EXISTS idx_products_active ON products(deleted_at) WHERE is_deleted=FALSE;
+
+-- منع تعديل حركة منتهية
+CREATE OR REPLACE FUNCTION fn_forbid_done_move() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN IF OLD.status='done' THEN RAISE EXCEPTION 'DONE_MOVE_IMMUTABLE %', OLD.id; END IF; RETURN NEW; END $$;
+DROP TRIGGER IF EXISTS trg_moves_immutable ON stock_moves;
+CREATE TRIGGER trg_moves_immutable BEFORE UPDATE OR DELETE ON stock_moves FOR EACH ROW EXECUTE FUNCTION fn_forbid_done_move();
+
+DO $$ DECLARE t TEXT; arr TEXT[] := ARRAY['product_categories','product_category_hierarchy','product_types','products','product_attributes','product_attribute_values','product_variants','product_variant_attributes','product_barcodes','uom_categories','uoms','uom_conversions','product_uoms','product_uom_conversions','price_lists','price_list_items','product_prices','product_taxes','product_accounts','product_suppliers','warehouses','warehouse_zones','location_types','locations','stock_moves','stock_move_lines','stock_quants','stock_reservations','stock_valuation_layers','stock_valuation_entries','inventory_adjustments','inventory_adjustment_lines','inventory_counts','inventory_count_lines','lots','serials','packages','stock_transfers','stock_transfer_lines','stock_scrap','stock_scrap_lines','landed_costs','landed_cost_lines','landed_cost_allocations'];
+BEGIN FOREACH t IN ARRAY arr LOOP
+EXECUTE format('DROP TRIGGER IF EXISTS trg_%s_touch ON %I',t,t);
+EXECUTE format('CREATE TRIGGER trg_%s_touch BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION fn_touch_updated_at()',t,t);
+EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',t);
+EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY',t);
+IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename=t AND policyname='tenant_iso_sel') THEN
+EXECUTE format('CREATE POLICY tenant_iso_sel ON %I FOR SELECT USING (tenant_id = NULLIF(current_setting(%L,true),%L)::UUID)',t,'app.current_tenant_id','');
+EXECUTE format('CREATE POLICY tenant_iso_ins ON %I FOR INSERT WITH CHECK (tenant_id = NULLIF(current_setting(%L,true),%L)::UUID)',t,'app.current_tenant_id','');
+EXECUTE format('CREATE POLICY tenant_iso_upd ON %I FOR UPDATE USING (tenant_id = NULLIF(current_setting(%L,true),%L)::UUID)',t,'app.current_tenant_id','');
+EXECUTE format('CREATE POLICY tenant_iso_del ON %I FOR DELETE USING (tenant_id = NULLIF(current_setting(%L,true),%L)::UUID)',t,'app.current_tenant_id','');
+END IF; END LOOP; END $$;
+
+-- Seed: وحدات وفئات ومواقع افتراضية (تُزرع لكل tenant عبر التطبيق)
+-- PCS قطعة / KG كيلو / L لتر / M متر / BOX علبة / CTN كرتون؛ فئات: UNIT/WEIGHT/VOLUME/LENGTH/PACK
+-- مواقع: STOCK/INPUT/OUTPUT/QUALITY/SCRAP لكل مستودع.
+
+COMMENT ON TABLE products IS 'الأصناف — مخزني/خدمي/مجموعة؛ التكلفة average افتراضياً (JO) | Products';
+COMMENT ON TABLE stock_moves IS 'حركات المخزون — المنتهية لا تُعدّل (Trigger) | Moves immutable when done';
+COMMENT ON TABLE stock_quants IS 'كاش الأرصدة — المصدر stock_moves | Rebuildable cache';
+COMMENT ON TABLE stock_valuation_layers IS 'طبقات FIFO/المتوسط — الاستهلاك بأقدم طبقة | Valuation layers';

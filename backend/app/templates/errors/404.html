@@ -1,0 +1,10 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}غير موجود (٤٠٤){% endblock %}
+{% block content %}
+<div class="card text-center p-4">
+  <div style="font-size:72px;color:var(--brown-300)">٤٠٤</div>
+  <h1>الصفحة غير موجودة</h1>
+  <p style="color:var(--text-soft)">الرابط الذي طلبته غير متوفر</p>
+  <a href="{{ url_for('web_dashboard.index') }}" class="btn btn-primary mt-3">عودة للرئيسية</a>
+</div>
+{% endblock %}

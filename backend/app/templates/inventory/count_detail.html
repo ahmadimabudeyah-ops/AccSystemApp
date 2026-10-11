@@ -1,0 +1,51 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<div id="count-detail" data-id="{{ count_id }}">
+  <div class="d-flex justify-between align-center mb-3">
+    <h1>{{ page.title }} <span id="c-no">…</span> <span class="badge badge-draft" id="c-status">…</span></h1>
+    <div class="d-flex gap-2" id="c-actions">
+      <button class="btn btn-secondary" data-docaction="snapshot" data-base="/api/v1/inventory/counts" data-id="{{ count_id }}">لقطة الأرصدة</button>
+      <button class="btn btn-secondary" data-docaction="start" data-base="/api/v1/inventory/counts" data-id="{{ count_id }}">بدء العدّ</button>
+      <button class="btn btn-gold" data-docaction="approve" data-base="/api/v1/inventory/counts" data-id="{{ count_id }}">اعتماد</button>
+      <button class="btn btn-primary" data-docaction="apply" data-base="/api/v1/inventory/counts" data-id="{{ count_id }}">ترحيل الفروقات</button>
+    </div>
+  </div>
+  <div class="card"><h3>البنود (النظامي مقابل المعدود)</h3>
+    <div class="table-wrap"><table class="table-lux">
+      <thead><tr><th>#</th><th>الصنف</th><th class="num">النظامي</th><th class="num">المعدود</th><th class="num">الفرق</th></tr></thead>
+      <tbody id="c-lines"><tr><td colspan="5"><div class="skeleton"></div></td></tr></tbody>
+    </table></div>
+    <div class="d-flex gap-2 mt-3">
+      <button class="btn btn-primary" id="c-submit">حفظ الكميات المعدودة</button>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const root = document.getElementById("count-detail");
+  if (!root || !sessionStorage.getItem("access_token")) return;
+  const id = root.dataset.id;
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  try {
+    const d = (await (await fetch(`/api/v1/inventory/counts/${id}`, { headers: window.apiHeaders() })).json()).data;
+    document.getElementById("c-no").textContent = d.doc_number || "—";
+    document.getElementById("c-status").textContent = d.status || "—";
+    const tb = document.getElementById("c-lines");
+    tb.innerHTML = (d.lines || []).map((l) =>
+      `<tr><td>${l.line_number}</td><td>${esc(l.product_code)} — ${esc(l.product_name)}</td>` +
+      `<td class="num">${esc(l.system_qty)}</td>` +
+      `<td><input class="form-control num ltr" data-line="${l.line_id}" type="number" step="0.001" value="${l.counted_qty == null ? "" : esc(l.counted_qty)}"></td>` +
+      `<td class="num">${l.diff == null ? "…" : esc(l.diff)}</td></tr>`).join("") || `<tr><td colspan="5">لا بنود — نفّذ لقطة الأرصدة أولًا</td></tr>`;
+    document.getElementById("c-submit").addEventListener("click", async () => {
+      const lines = [...tb.querySelectorAll("input[data-line]")].filter((i) => i.value !== "").map((i) => ({ line_id: i.dataset.line, counted_qty: parseFloat(i.value) }));
+      if (!lines.length) { window.toast("أدخل كمية معدودة واحدة على الأقل", "error"); return; }
+      const res = await fetch(`/api/v1/inventory/counts/${id}/submit`, { method: "POST",
+        headers: window.apiHeaders(), body: JSON.stringify({ lines }) });
+      if (res.ok) window.location.reload();
+      else { const e = await res.json().catch(() => ({})); window.toast((e.error && e.error.code) || "تعذر الحفظ", "error"); }
+    });
+  } catch (e) { window.toast("تعذر تحميل الجرد", "error"); }
+});
+</script>
+{% endblock %}

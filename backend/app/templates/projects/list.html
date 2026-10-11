@@ -1,0 +1,4 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}{% include "shared/_list_body.html" %}{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/tables.js') }}"></script>{% endblock %}

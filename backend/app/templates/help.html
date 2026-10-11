@@ -1,0 +1,36 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}المساعدة والأسئلة الشائعة{% endblock %}
+{% block content %}
+<h1 class="mb-3">المساعدة</h1>
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card mb-3"><h3>كيف أنشئ قيدًا وأرحّله؟</h3>
+      <p>القيود ← جديد ← أدخل سطورًا متوازنة ← حفظ مسودة ← اطلب من معتمد آخر الترحيل من صفحة القيد.</p></div>
+    <div class="card mb-3"><h3>كيف أصدر فاتورة وأحصّلها؟</h3>
+      <p>المبيعات ← فواتير ← جديدة ← ترحيل (ينشئ القيد والطابور الإلكتروني) ← الدفعات ← دفعة ← تخصيص على الفاتورة.</p></div>
+    <div class="card mb-3"><h3>لماذا رُفض الترحيل؟</h3>
+      <p>الأسباب الشائعة: فترة مغلقة، قيد غير متوازن، اعتماد ذاتي (الصانع لا يرحّل عمله)، تجاوز حد ائتماني.</p></div>
+    <div class="card mb-3"><h3>كيف أسترجع كلمة المرور؟</h3>
+      <p>من صفحة الدخول ← نسيت كلمة المرور ← أدخل البريد ← استخدم الرابط المرسل (صالح ساعتين).</p></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card"><h3>أرسل ملاحظة</h3>
+      <form id="feedback-form">
+        <div class="mb-2"><input class="form-control" name="subject" placeholder="الموضوع" required></div>
+        <div class="mb-2"><textarea class="form-control" name="body" placeholder="التفاصيل" required></textarea></div>
+        <button class="btn btn-primary w-100" type="submit">إرسال</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById("feedback-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const res = await fetch("/api/v1/feedback", { method: "POST", headers: window.apiHeaders(),
+    body: JSON.stringify({ subject: fd.get("subject"), body: fd.get("body") }) });
+  if (res.ok) { window.toast("شكرًا! وصلتنا ملاحظتك", "success"); e.target.reset(); }
+  else window.toast("سجّل الدخول أولًا", "error");
+});
+</script>
+{% endblock %}

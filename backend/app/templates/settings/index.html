@@ -1,0 +1,12 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}الإعدادات{% endblock %}
+{% block content %}
+<h1 class="mb-3">الإعدادات</h1>
+<div class="row g-3">
+  {% for label, url in page.links %}
+    <div class="col-md-6 col-xl-4">
+      <a href="{{ url }}" class="card" style="text-decoration:none;color:inherit;display:block"><h3>{{ label }}</h3></a>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

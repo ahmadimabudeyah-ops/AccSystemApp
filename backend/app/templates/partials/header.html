@@ -1,0 +1,27 @@
+<header class="topbar" role="banner">
+  <button class="btn btn-ghost btn-icon d-lg-none" aria-label="القائمة" onclick="document.querySelector('.sidebar').classList.toggle('open')">
+    <i class="fa-solid fa-bars"></i>
+  </button>
+  <span class="brand-logo" style="color:var(--brown-700)">دفتر الأصالة</span>
+  <div class="ms-auto d-flex gap-2 align-center">
+    <div class="position-relative d-none d-md-block">
+      <input class="form-control" style="min-height:40px" placeholder="بحث… (Ctrl+K)" aria-label="بحث شامل">
+    </div>
+    <div class="dropdown d-none d-md-block">
+      <button class="btn btn-primary" data-bs-toggle="dropdown" aria-label="إنشاء جديد">+ جديد</button>
+      <ul class="dropdown-menu" style="text-align:start">
+        <li><a class="dropdown-item" href="{{ url_for('web_entries.new') }}">قيد يومية</a></li>
+        <li><a class="dropdown-item" href="{{ url_for('web_sales.new_invoice') }}">فاتورة مبيعات</a></li>
+        <li><a class="dropdown-item" href="{{ url_for('web_purchases.new_bill') }}">فاتورة مشتريات</a></li>
+        <li><a class="dropdown-item" href="{{ url_for('web_parties.new') }}">طرف جديد</a></li>
+        <li><a class="dropdown-item" href="{{ url_for('web_products.new') }}">صنف جديد</a></li>
+      </ul>
+    </div>
+    {% include "partials/theme_toggle.html" %}
+    <a class="btn btn-ghost btn-icon" href="/help" aria-label="مساعدة">
+      <i class="fa-regular fa-circle-question"></i>
+    </a>
+    {% include "partials/notifications.html" %}
+    {% include "partials/user_menu.html" %}
+  </div>
+</header>

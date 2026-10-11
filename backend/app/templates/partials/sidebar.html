@@ -1,0 +1,98 @@
+<aside class="sidebar" aria-label="التنقل الرئيسي">
+  <nav class="d-flex flex-column gap-1" x-data="{open: ''}">
+    <a class="nav-link {% if active=='dashboard' %}active{% endif %}" href="{{ url_for('web_dashboard.index') }}"><i class="fa-solid fa-gauge-high fa-fw"></i> لوحة التحكم</a>
+    {% macro group(key, label, icon, items) %}
+      <button class="nav-link w-100" @click="open = (open === '{{ key }}' ? '' : '{{ key }}')" aria-expanded="false">
+        <i class="fa-solid {{ icon }} fa-fw"></i> {{ label }}<i class="fa-solid fa-chevron-down ms-auto" style="font-size:11px"></i>
+      </button>
+      <div class="ps-3 d-flex flex-column gap-1" x-show="open === '{{ key }}' || '{{ active }}'.startsWith('{{ key }}')">
+        {% for href, text, act in items %}
+          <a class="nav-link {% if active==act %}active{% endif %}" href="{{ href }}">{{ text }}</a>
+        {% endfor %}
+      </div>
+    {% endmacro %}
+    {{ group('accounts', 'المحاسبة', 'fa-book', [
+      (url_for('web_accounts.list'), 'دليل الحسابات', 'accounts'),
+      (url_for('web_accounts.tree'), 'شجرة الحسابات', 'accounts-tree'),
+      (url_for('web_journals.list'), 'الدفاتر', 'journals'),
+      (url_for('web_entries.list'), 'القيود اليومية', 'entries'),
+    ]) }}
+    {{ group('sales', 'المبيعات', 'fa-cart-shopping', [
+      (url_for('web_sales.quotations'), 'عروض الأسعار', 'sales-q'),
+      (url_for('web_sales.orders'), 'أوامر البيع', 'sales-o'),
+      (url_for('web_sales.deliveries'), 'التسليمات', 'sales-d'),
+      (url_for('web_sales.invoices'), 'فواتير العملاء', 'sales-i'),
+      (url_for('web_sales.payments'), 'الدفعات', 'sales-p'),
+      (url_for('web_sales.returns'), 'المرتجعات', 'sales-r'),
+    ]) }}
+    {{ group('purchases', 'المشتريات', 'fa-basket-shopping', [
+      (url_for('web_purchases.requests'), 'طلبات الشراء', 'pur-r'),
+      (url_for('web_purchases.orders'), 'أوامر الشراء', 'pur-o'),
+      (url_for('web_purchases.receipts'), 'الاستلامات', 'pur-g'),
+      (url_for('web_purchases.bills'), 'فواتير الموردين', 'pur-b'),
+      (url_for('web_purchases.payments'), 'الدفعات', 'pur-p'),
+    ]) }}
+    {{ group('inventory', 'المخزون', 'fa-boxes-stacked', [
+      (url_for('web_products.list'), 'الأصناف', 'products'),
+      (url_for('web_inventory.moves'), 'الحركات', 'inv-m'),
+      (url_for('web_inventory.quants'), 'الأرصدة', 'inv-q'),
+      (url_for('web_inventory.counts'), 'الجرد', 'inv-c'),
+      (url_for('web_inventory.transfers'), 'التحويلات', 'inv-t'),
+    ]) }}
+    {{ group('treasury', 'الخزينة', 'fa-vault', [
+      (url_for('web_treasury.cash_boxes'), 'الصناديق', 'tre-cb'),
+      (url_for('web_treasury.cash_transactions'), 'حركات النقد', 'tre-ct'),
+      (url_for('web_treasury.banks'), 'البنوك', 'tre-b'),
+      (url_for('web_treasury.checks'), 'الشيكات', 'tre-ch'),
+      (url_for('web_treasury.transfers'), 'التحويلات', 'tre-t'),
+    ]) }}
+    {{ group('assets', 'الأصول', 'fa-building-columns', [
+      (url_for('web_assets.list'), 'قائمة الأصول', 'assets'),
+      (url_for('web_assets.depreciation'), 'الإهلاك', 'assets-d'),
+    ]) }}
+    {{ group('hr', 'الموارد البشرية', 'fa-id-card', [
+      (url_for('web_hr.employees'), 'الموظفون', 'hr-e'),
+      (url_for('web_hr.runs'), 'مسيرات الرواتب', 'hr-r'),
+      (url_for('web_hr.leaves'), 'الإجازات', 'hr-e'),
+      (url_for('web_hr.loans'), 'السلف', 'hr-e'),
+    ]) }}
+    {{ group('edu', 'التعليم', 'fa-graduation-cap', [
+      (url_for('web_edu.students'), 'الطلاب', 'edu-s'),
+      (url_for('web_edu.contracts'), 'عقود الرسوم', 'edu-f'),
+    ]) }}
+    {{ group('prj', 'المشاريع', 'fa-diagram-project', [
+      (url_for('web_projects.projects'), 'المشاريع', 'prj'),
+      (url_for('web_projects.budgets'), 'الموازنات', 'bud'),
+    ]) }}
+    {{ group('tax', 'الضرائب', 'fa-percent', [
+      (url_for('web_taxes.list'), 'الضرائب', 'taxes'),
+      (url_for('web_taxes.returns'), 'الإقرارات', 'taxes'),
+      (url_for('web_taxes.einvoicing'), 'الفوترة الإلكترونية', 'taxes'),
+    ]) }}
+    {{ group('parties', 'الأطراف', 'fa-users', [
+      (url_for('web_parties.customers'), 'العملاء', 'parties-c'),
+      (url_for('web_parties.suppliers'), 'الموردون', 'parties-s'),
+      (url_for('web_parties.list'), 'الكل', 'parties'),
+    ]) }}
+    {{ group('reports', 'التقارير', 'fa-chart-column', [
+      (url_for('web_reports.index'), 'فهرس التقارير', 'reports'),
+      (url_for('web_reports.view', name='trial-balance'), 'ميزان المراجعة', 'rep-tb'),
+      (url_for('web_reports.view', name='ledger'), 'الأستاذ العام', 'rep-gl'),
+      (url_for('web_reports.view', name='aging-receivables'), 'أعمار الذمم', 'rep-ar'),
+      (url_for('web_reports.schedules'), 'جدولة التقارير', 'reports'),
+    ]) }}
+    {{ group('settings', 'الإعدادات', 'fa-gear', [
+      (url_for('web_settings.index'), 'الإعدادات', 'settings'),
+      (url_for('web_settings.users'), 'المستخدمون', 'set-u'),
+      (url_for('web_settings.roles'), 'الأدوار', 'set-r'),
+      (url_for('web_settings.branches'), 'الفروع', 'set-b'),
+      (url_for('web_projects.audit_logs'), 'سجل التدقيق', 'set-a'),
+      (url_for('web_projects.dimensions'), 'الأبعاد التحليلية', 'set-d'),
+      (url_for('web_projects.periods'), 'الفترات المالية', 'set-p'),
+    ]) }}
+  </nav>
+  <div class="card mt-4" style="padding:16px;background:var(--gradient-luxury);color:#fff;border:none">
+    <strong>الفترة المالية</strong>
+    <div class="num">٢٠٢٦ — مفتوحة</div>
+  </div>
+</aside>

@@ -1,0 +1,18 @@
+/* dark.css — الوضع الليلي الدافئ */
+[data-theme="dark"] {
+  --bg: #1C1917; --surface: #292524; --border: #57534E;
+  --text: #FAF7F4; --text-soft: #D6D3D1;
+  --brown-50: #44403C; --brown-100: #44403C; --brown-200: #57534E;
+  --brown-500: #BE9873; --brown-600: #BE9873; --brown-700: #E5D5C5; --brown-800: #F2EBE3;
+}
+[data-theme="dark"] body { background: var(--bg); color: var(--text); transition: background .3s, color .3s; }
+[data-theme="dark"] .card, [data-theme="dark"] .modal-box, [data-theme="dark"] .toast,
+[data-theme="dark"] .table-wrap { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .table-lux thead th { background: #44403C; color: #F2EBE3; }
+[data-theme="dark"] .table-lux tbody td { border-color: #44403C; }
+[data-theme="dark"] .table-lux tbody tr:hover { background: #44403C; }
+[data-theme="dark"] .form-control { background: #44403C; border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .btn-secondary { background: transparent; border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .sidebar { background: var(--gradient-dark); }
+[data-theme="dark"] .tree-row:hover { background: #44403C; }
+[data-theme="dark"] .skeleton { background: linear-gradient(90deg, #44403C, #57534E, #44403C); background-size: 200% 100%; }

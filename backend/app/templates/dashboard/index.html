@@ -1,0 +1,45 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}لوحة التحكم{% endblock %}
+{% block content %}
+<h1>مساء الخير، <bdi>المدير</bdi></h1>
+<p class="arabic-date" style="color:var(--text-soft)">٩ أكتوبر ٢٠٢٦ — الفترة المالية مفتوحة</p>
+<div class="row g-3 mt-1">
+  <div class="col-md-6 col-xl-3"><div class="card card-stat"><div class="stat-label">الإيرادات</div><div class="stat-value num" id="stat-revenue">١٢٤٬٥٠٠ د.أ</div></div></div>
+  <div class="col-md-6 col-xl-3"><div class="card card-stat"><div class="stat-label">المصروفات</div><div class="stat-value num" id="stat-expenses">٨٦٬٢٠٠ د.أ</div></div></div>
+  <div class="col-md-6 col-xl-3"><div class="card card-stat"><div class="stat-label">صافي الربح</div><div class="stat-value num" id="stat-profit" style="color:var(--success)">٣٨٬٣٠٠ د.أ</div></div></div>
+  <div class="col-md-6 col-xl-3"><div class="card card-stat" data-requires="journals.post"><div class="stat-label">مسودات بانتظار الترحيل</div><div class="stat-value num" id="stat-drafts">—</div></div></div>
+  <div class="col-md-6 col-xl-3"><div class="card card-stat" data-requires="sales.manage"><div class="stat-label">فواتير متأخرة</div><div class="stat-value num" id="stat-overdue" style="color:var(--danger)">—</div></div></div>
+  <div class="col-md-6 col-xl-3"><div class="card card-stat"><div class="stat-label">فواتير مستحقة</div><div class="stat-value num" style="color:var(--danger)">١٢</div></div></div>
+</div>
+<div class="row g-3 mt-1">
+  <div class="col-xl-8"><div class="card"><h3>المبيعات الشهرية</h3><canvas id="sales-chart" height="120"></canvas></div></div>
+  <div class="col-xl-4"><div class="card"><h3>توزيع الإيرادات</h3><canvas id="revenue-chart" height="180"></canvas></div></div>
+</div>
+<div class="row g-3 mt-1">
+  <div class="col-xl-8">
+    <div class="card">
+      <div class="d-flex justify-between align-center mb-3"><h3>أحدث الفواتير</h3><a href="{{ url_for('web_sales.invoices') }}" class="btn btn-ghost">عرض الكل</a></div>
+            <div class="table-wrap"><table class="table-lux">
+              <thead><tr><th>الرقم</th><th>البيان</th><th class="num">المبلغ</th><th>الحالة</th></tr></thead>
+              <tbody id="recent-entries"><tr><td colspan="4">سجّل الدخول لعرض أحدث القيود</td></tr></tbody>
+            </table></div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="card"><h3>تنبيهات</h3>
+      <div class="d-flex flex-column gap-2">
+        <div class="toast toast-error">٥ فواتير متأخرة أكثر من ٣٠ يومًا</div>
+        <div class="toast">٣ شيكات تستحق هذا الأسبوع</div>
+        <div class="toast">صنفان تحت حد إعادة الطلب</div>
+      </div>
+      <div class="d-flex gap-2 mt-3">
+        <a href="{{ url_for('web_entries.new') }}" class="btn btn-primary">قيد جديد</a>
+        <a href="{{ url_for('web_sales.new_invoice') }}" class="btn btn-secondary">فاتورة جديدة</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+{% endblock %}

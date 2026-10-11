@@ -1,0 +1,10 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}خطأ في الخادم (٥٠٠){% endblock %}
+{% block content %}
+<div class="card text-center p-4">
+  <div style="font-size:72px;color:var(--brown-300)">٥٠٠</div>
+  <h1>خطأ في الخادم</h1>
+  <p style="color:var(--text-soft)">حدث خطأ غير متوقع — سُجّل في سجل النظام</p>
+  <a href="{{ url_for('web_dashboard.index') }}" class="btn btn-primary mt-3">عودة للرئيسية</a>
+</div>
+{% endblock %}

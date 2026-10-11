@@ -1,0 +1,43 @@
+{# جسم تفاصيل عام: page = {title, actions:[{label,url,style,method}], sections:[{title, rows:[(label,value,num)]}], tabs} #}
+<div class="d-flex justify-between align-center mb-3">
+  <h1>{{ page.title }}</h1>
+  <div class="d-flex gap-2">
+    {% for a in page.actions or [] %}
+      {% if a.api %}
+        <button class="btn btn-{{ a.style or 'secondary' }}" data-docaction="{{ a.api_action }}"
+                data-base="{{ a.api_base }}" data-id="{{ a.api_id }}">{{ a.label }}</button>
+      {% elif a.method == 'post' %}
+        <form method="post" action="{{ a.url }}" style="display:inline" onsubmit="return confirm('تأكيد {{ a.label }}؟')">
+          <button class="btn btn-{{ a.style or 'secondary' }}" type="submit">{{ a.label }}</button>
+        </form>
+      {% else %}
+        <a class="btn btn-{{ a.style or 'secondary' }}" href="{{ a.url }}">{{ a.label }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% for s in page.sections or [] %}
+<div class="card mb-3">
+  {% if s.title %}<h3>{{ s.title }}</h3>{% endif %}
+  <div class="table-wrap"><table class="table-lux"><tbody>
+    {% for r in s.rows %}
+      <tr><th style="width:30%">{{ r[0] }}</th><td class="{% if r|length > 2 and r[2] %}num{% endif %}">{{ r[1] }}</td></tr>
+    {% endfor %}
+  </tbody></table></div>
+</div>
+{% endfor %}
+{% if page.table %}
+<div class="card">
+  <h3>{{ page.table.title }}</h3>
+  <div class="table-wrap"><table class="table-lux">
+    <thead><tr>{% for c in page.table.columns %}<th class="{% if c.num %}num{% endif %}">{{ c.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for r in page.table.rows %}
+        <tr>{% for c in page.table.columns %}<td class="{% if c.num %}num{% endif %}">{{ r[c.key] }}</td>{% endfor %}</tr>
+      {% else %}
+        <tr><td colspan="20">{% include "partials/empty_state.html" %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}

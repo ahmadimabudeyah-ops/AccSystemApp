@@ -1,0 +1,18 @@
+/* rtl.css — تعزيزات RTL: انعكاس الاتجاهي فقط، الثابت لا ينعكس */
+[dir="rtl"] .flip-rtl { transform: scaleX(-1); }
+[dir="rtl"] .no-flip { transform: none !important; }
+[dir="rtl"] .breadcrumb-item + .breadcrumb-item::before { content: "‹"; }
+[dir="rtl"] .carousel-control-prev { right: auto; left: 0; }
+[dir="rtl"] .carousel-control-next { left: auto; right: 0; }
+[dir="rtl"] input[type="email"], [dir="rtl"] input[type="tel"],
+[dir="rtl"] input.numeric, [dir="rtl"] .ltr-field { direction: ltr; text-align: left; }
+[dir="rtl"] input:not([type="email"]):not([type="tel"]):not(.numeric):not(.ltr-field) { text-align: start; }
+[dir="rtl"] .table-lux thead th:first-child { border-start-start-radius: var(--radius-lg); }
+[dir="rtl"] .chart-legend { direction: rtl; text-align: start; }
+.sidebar { inset-inline-start: 0; }
+@media (max-width: 991px) {
+  .sidebar { position: fixed; inset-inline-start: 0; top: 0; bottom: 0; z-index: 1040;
+    transform: translateX(100%); transition: transform .3s ease; }
+  [dir="rtl"] .sidebar.open { transform: none; }
+  .sidebar-backdrop { position: fixed; inset: 0; background: rgba(43,29,19,.4); z-index: 1030; }
+}

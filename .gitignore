@@ -1,0 +1,7 @@
+.pgdata/
+.pgdata.log
+__pycache__/
+*.pyc
+.env
+backend/.env
+MASTER_PROMPT.md

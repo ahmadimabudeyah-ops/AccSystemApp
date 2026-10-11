@@ -1,0 +1,9 @@
+{% extends "layouts/auth.html" %}
+{% block title %}بوابة العميل{% endblock %}
+{% block auth_subtitle %}كشف حساب: {{ party.name_ar }}{% endblock %}
+{% block auth_form %}
+<div class="card">
+  <p>للاطلاع على الفواتير: <a href="/portal/{{ raw }}/invoices">عرض الفواتير</a></p>
+  <p style="color:var(--text-soft)">رابط خاص بك — لا تشاركه.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "layouts/auth.html" %}
+{% block title %}تسجيل مستأجر جديد{% endblock %}
+{% block auth_subtitle %}ابدأ نسختك التجريبية خلال دقيقة{% endblock %}
+{% block auth_form %}
+<form method="post" action="{{ url_for('web_auth.register_post') }}">
+  <div class="mb-3"><label class="form-label" for="org">اسم المؤسسة <span class="req">*</span></label>
+    <input class="form-control" id="org" name="org" required></div>
+  <div class="mb-3"><label class="form-label" for="email">البريد الإلكتروني <span class="req">*</span></label>
+    <input class="form-control" id="email" name="email" type="email" dir="ltr" required></div>
+  <button class="btn btn-gold w-100" type="submit">طلب النسخة التجريبية</button>
+  <div class="text-center mt-3"><a href="{{ url_for('web_auth.login') }}">لديك حساب؟ سجّل الدخول</a></div>
+</form>
+{% endblock %}

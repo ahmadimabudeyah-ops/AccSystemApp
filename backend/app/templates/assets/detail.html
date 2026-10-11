@@ -1,0 +1,27 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<div id="doc-detail" data-kind="asset" data-id="{{ asset_id }}">
+  <div class="d-flex justify-between align-center mb-3">
+    <h1>{{ page.title }} <span id="d-no">…</span> <span class="badge badge-draft" id="d-status">…</span></h1>
+    <a class="btn btn-secondary" href="/assets/{{ asset_id }}/disposal">استبعاد</a>
+  </div>
+  <div class="card mb-3"><div class="d-flex gap-3" id="d-head">
+    <span>الكلفة: <strong class="num" id="d-cost">…</strong></span>
+    <span>المجمع: <strong class="num" id="d-accum">…</strong></span>
+    <span>الصافي: <strong class="num" id="d-net">…</strong></span>
+  </div></div>
+  <div class="card mb-3">
+    <h3>ترحيل إهلاك شهر</h3>
+    <form id="depreciate-form" data-api-post="/api/v1/assets/{{ asset_id }}/depreciate" data-redirect="/assets/{{ asset_id }}" data-method="POST" novalidate>
+      <div class="row g-3">
+        <div class="col-md-4"><label class="form-label">تاريخ الترحيل</label><input class="form-control ltr" name="posting_date" type="date" dir="ltr"></div>
+        <div class="col-md-4"><label class="form-label">حساب المصروف <span class="req">*</span></label><select class="form-control" name="expense_account_id" data-source="accounts" data-postable required><option value="">اختر…</option></select></div>
+        <div class="col-md-4"><label class="form-label">حساب المجمع <span class="req">*</span></label><select class="form-control" name="accum_account_id" data-source="accounts" data-postable required><option value="">اختر…</option></select></div>
+      </div>
+      <div class="d-flex gap-2 mt-3"><button class="btn btn-primary" type="submit">ترحيل الإهلاك</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/forms.js') }}"></script><script src="{{ url_for('static', filename='js/data.js') }}"></script>{% endblock %}

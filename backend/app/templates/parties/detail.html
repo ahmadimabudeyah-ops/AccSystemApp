@@ -1,0 +1,27 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<div id="doc-detail" data-kind="party" data-id="{{ doc_id }}">
+  <div class="d-flex justify-between align-center mb-3">
+    <h1>{{ page.title }} <span id="d-no">…</span> <span class="badge badge-draft" id="d-status">…</span></h1>
+    <div class="d-flex gap-2" id="d-actions">
+      {% for a in page.actions or [] %}
+        {% if a.api %}
+          <button class="btn btn-{{ a.style or 'primary' }}" data-docaction="{{ a.api_action }}" data-base="{{ a.api_base }}" data-id="{{ a.api_id }}"> {{ a.label }}</button>
+        {% elif a.method == 'post' %}
+          <form method="post" action="{{ a.url }}" style="display:inline"><button class="btn btn-{{ a.style or 'secondary' }}" type="submit">{{ a.label }}</button></form>
+        {% else %}
+          <a class="btn btn-{{ a.style or 'secondary' }}" href="{{ a.url }}">{{ a.label }}</a>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <div class="card mb-3"><h3>البيانات</h3>
+    <div class="table-wrap"><table class="table-lux">
+      <thead><tr><th>الحقل</th><th>القيمة</th></tr></thead>
+      <tbody id="d-fields"><tr><td colspan="2"><div class="skeleton"></div></td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+{% block scripts %}{{ super() }}{% endblock %}
+{% endblock %}

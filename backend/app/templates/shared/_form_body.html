@@ -1,0 +1,29 @@
+{# جسم نموذج عام: page = {title, action, method, fields:[{name,label,type,required,options,value,ltr}], submit, cancel_url, item} #}
+<h1 class="mb-3">{{ page.title }}</h1>
+<div class="card">
+  <form {% if page.api_post %}data-api-post="{{ page.api_post }}" data-redirect="{{ page.redirect_url or '' }}"{% if page.single_line %} data-single-line{% endif %}{% if page.method %} data-method="{{ page.method }}"{% endif %}{% if page.prefill %} data-prefill="{{ page.prefill }}"{% endif %} novalidate{% else %}method="post" action="{{ page.action }}"{% endif %}>
+    <div class="row g-3">
+      {% for f in page.fields %}
+        <div class="col-md-{{ f.width or 6 }}">
+          <label class="form-label" for="f-{{ f.name }}">{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
+          {% if f.type == 'select' %}
+            <select class="form-control" id="f-{{ f.name }}" name="{{ f.name }}" {% if f.required %}required{% endif %}{% if f.source %} data-source="{{ f.source }}"{% endif %}{% if f.warehouse_for %} data-warehouse-for="{{ f.warehouse_for }}"{% endif %}>
+              <option value="">اختر…</option>
+              {% for v, t in f.options %}<option value="{{ v }}" {% if (page.item or {}).get(f.name) == v %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+          {% elif f.type == 'textarea' %}
+            <textarea class="form-control" id="f-{{ f.name }}" name="{{ f.name }}" rows="3">{{ (page.item or {}).get(f.name, '') }}</textarea>
+          {% else %}
+            <input class="form-control {% if f.ltr %}ltr{% endif %}" id="f-{{ f.name }}" name="{{ f.name }}"
+              type="{{ f.type or 'text' }}" {% if f.ltr %}dir="ltr"{% endif %}
+              value="{{ (page.item or {}).get(f.name, f.value or '') }}" {% if f.required %}required{% endif %}>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <div class="d-flex gap-2 mt-4">
+      <button class="btn btn-primary" type="submit">{{ page.submit or 'حفظ' }}</button>
+      {% if page.cancel_url %}<a class="btn btn-secondary" href="{{ page.cancel_url }}">إلغاء</a>{% endif %}
+    </div>
+  </form>
+</div>

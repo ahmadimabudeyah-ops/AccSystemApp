@@ -1,0 +1,25 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<h1 class="mb-3">{{ page.title }}</h1>
+<div class="card mb-3" id="report-filter" data-report="{{ report_name }}">
+  <div class="row g-2 align-center">
+    <div class="col-md-4"><label class="form-label">الفترة</label><select class="form-control" id="rep-period"><option value="">اختر…</option></select></div>
+    <div class="col-md-4" id="rep-account-wrap" hidden><label class="form-label">الحساب</label><select class="form-control" id="rep-account"></select></div>
+    <div class="col-md-4 d-flex align-center gap-2" style="margin-top:24px">
+      <button class="btn btn-primary" onclick="loadReport()">عرض</button>
+      <button class="btn btn-secondary" onclick="window.print()">طباعة</button>
+      <button class="btn btn-secondary" onclick="exportTable('report-table')">تصدير</button>
+    </div>
+  </div>
+</div>
+<div class="card">
+  <div class="table-wrap"><table class="table-lux" id="report-table">
+    <thead><tr id="rep-head"><th>البند</th><th class="num">المبلغ</th></tr></thead>
+    <tbody id="rep-body"><tr><td colspan="5">اختر الفترة ثم اضغط عرض (يتطلب تسجيل الدخول)</td></tr></tbody>
+  </table></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tables.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,5 @@
+{"name": "دفتر الأصالة", "short_name": "الأصالة", "start_url": "/dashboard",
+ "display": "standalone", "dir": "rtl", "lang": "ar", "background_color": "#FDFBF7",
+ "theme_color": "#A67B5B",
+ "icons": [{"src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23A67B5B'/%3E%3C/svg%3E",
+ "sizes": "32x32", "type": "image/svg+xml"}]}

@@ -1,0 +1,10 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}ممنوع (٤٠٣){% endblock %}
+{% block content %}
+<div class="card text-center p-4">
+  <div style="font-size:72px;color:var(--brown-300)">٤٠٣</div>
+  <h1>ممنوع</h1>
+  <p style="color:var(--text-soft)">لا تملك صلاحية الوصول لهذه الصفحة</p>
+  <a href="{{ url_for('web_dashboard.index') }}" class="btn btn-primary mt-3">عودة للرئيسية</a>
+</div>
+{% endblock %}

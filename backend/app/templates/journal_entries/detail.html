@@ -1,0 +1,28 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}تفاصيل القيد{% endblock %}
+{% block content %}
+<div id="entry-detail" data-entry="{{ eid }}">
+  <div class="d-flex justify-between align-center mb-3">
+    <h1>قيد <span id="e-no">…</span> <span class="badge badge-draft" id="e-status">…</span></h1>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary" data-do="post">ترحيل</button>
+      <a class="btn btn-gold" href="{{ url_for('web_entries.approve', e_id=eid) }}">اعتماد</a>
+      <a class="btn btn-secondary" href="{{ url_for('web_entries.reverse', e_id=eid) }}">عكس</a>
+    </div>
+  </div>
+  <div class="card mb-3"><div class="d-flex gap-3">
+    <span>التاريخ: <strong id="e-date">…</strong></span>
+    <span>الإجمالي: <strong class="num" id="e-total">…</strong></span>
+  </div></div>
+  <div class="card mb-3"><h3>الأسطر</h3>
+    <div class="table-wrap"><table class="table-lux">
+      <thead><tr><th>#</th><th>الحساب</th><th class="num">مدين</th><th class="num">دائن</th></tr></thead>
+      <tbody id="e-lines"><tr><td colspan="4"><div class="skeleton"></div></td></tr></tbody>
+    </table></div>
+  </div>
+  <div class="row g-3">
+    <div class="col-md-6"><div class="card"><h3>الاعتمادات</h3><div id="e-approvals">…</div></div></div>
+    <div class="col-md-6"><div class="card"><h3>التعليقات</h3><div id="e-comments">…</div></div></div>
+  </div>
+</div>
+{% endblock %}

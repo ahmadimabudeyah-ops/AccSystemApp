@@ -1,0 +1,46 @@
+/* variables.css — نظام الألوان والخطوط والمسافات (الهوية البنية الذهبية) */
+:root {
+  /* بني القهوة العربية */
+  --brown-50: #FAF7F4; --brown-100: #F2EBE3; --brown-200: #E5D5C5;
+  --brown-300: #D4B99A; --brown-400: #BE9873; --brown-500: #A67B5B;
+  --brown-600: #8B6244; --brown-700: #6F4E37; --brown-800: #4A3423;
+  --brown-900: #2B1D13;
+  /* الذهب العربي */
+  --gold-50: #FBF8F1; --gold-100: #F5EED9; --gold-200: #EBD9A8;
+  --gold-300: #DEC078; --gold-400: #D1A84E; --gold-500: #C9A961;
+  --gold-600: #A88B4A; --gold-700: #866E3A; --gold-800: #64522B;
+  --gold-900: #42371D;
+  /* محايدة */
+  --white: #FFFFFF; --cream: #FDFBF7; --ivory: #F8F5F0;
+  --stone-100: #F5F5F4; --stone-200: #E7E5E4; --stone-300: #D6D3D1;
+  --stone-400: #A8A29E; --stone-500: #78716C; --stone-600: #57534E;
+  --stone-700: #44403C; --stone-800: #292524; --stone-900: #1C1917;
+  /* دلالية */
+  --success: #4A7C59; --success-bg: #E8F0EA;
+  --warning: #C68B3C; --warning-bg: #F5EBD9;
+  --danger: #A03E3E; --danger-bg: #F5E5E5;
+  --info: #5B7B9A; --info-bg: #E5EBF0;
+  /* تدرجات */
+  --gradient-primary: linear-gradient(135deg, #A67B5B, #6F4E37);
+  --gradient-gold: linear-gradient(135deg, #C9A961, #A67B5B);
+  --gradient-subtle: linear-gradient(180deg, #FAF7F4, #F2EBE3);
+  --gradient-dark: linear-gradient(135deg, #2B1D13, #4A3423);
+  --gradient-luxury: linear-gradient(135deg, #C9A961, #A67B5B, #6F4E37);
+  /* خطوط */
+  --font-head: "Cairo", sans-serif;
+  --font-body: "Tajawal", sans-serif;
+  --font-num: "IBM Plex Sans Arabic", sans-serif;
+  --font-logo: "Noto Kufi Arabic", sans-serif;
+  /* زوايا وظلال */
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px;
+  --radius-xl: 24px; --radius-full: 9999px;
+  --shadow-xs: 0 1px 2px rgba(43,29,19,.04);
+  --shadow-sm: 0 2px 4px rgba(43,29,19,.06);
+  --shadow-md: 0 4px 12px rgba(43,29,19,.08);
+  --shadow-lg: 0 12px 24px rgba(43,29,19,.10);
+  --shadow-xl: 0 24px 48px rgba(43,29,19,.12);
+  --shadow-gold: 0 4px 20px rgba(201,169,97,.25);
+  /* سطح */
+  --bg: var(--cream); --surface: var(--white); --border: var(--brown-200);
+  --text: var(--stone-800); --text-soft: var(--stone-500);
+}

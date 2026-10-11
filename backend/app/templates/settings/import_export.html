@@ -1,0 +1,42 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}استيراد وتصدير{% endblock %}
+{% block content %}
+<h1 class="mb-3">استيراد وتصدير البيانات</h1>
+<div class="row g-3">
+  <div class="col-md-6"><div class="card"><h3>استيراد أطراف (CSV)</h3>
+    <p style="color:var(--text-soft)">الأعمدة: entity_id,code,name_ar,credit_limit</p>
+    <input class="form-control mb-2" type="file" id="imp-parties" accept=".csv">
+    <button class="btn btn-primary" onclick="uploadCSV('/api/v1/import/parties','imp-parties')">رفع</button>
+  </div></div>
+  <div class="col-md-6"><div class="card"><h3>استيراد أصناف (CSV)</h3>
+    <p style="color:var(--text-soft)">الأعمدة: entity_id,code,name_ar,sale_price,standard_cost</p>
+    <input class="form-control mb-2" type="file" id="imp-products" accept=".csv">
+    <button class="btn btn-primary" onclick="uploadCSV('/api/v1/import/products','imp-products')">رفع</button>
+  </div></div>
+  <div class="col-md-6"><div class="card"><h3>تصدير كامل (JSON)</h3>
+    <p style="color:var(--text-soft)">نسخة من بيانات مؤسستك: حسابات/أطراف/قيود/فواتير.</p>
+    <button class="btn btn-gold" onclick="exportTenant()">تحميل النسخة</button>
+  </div></div>
+</div>
+<script>
+async function uploadCSV(url, inputId) {
+  const f = document.getElementById(inputId).files[0];
+  if (!f) { window.toast("اختر ملفًا", "error"); return; }
+  const fd = new FormData(); fd.append("file", f);
+  const h = window.apiHeaders(); delete h["Content-Type"];
+  const res = await fetch(url, { method: "POST", headers: h, body: fd });
+  const data = await res.json();
+  if (res.ok || res.status === 201) window.toast(`تم: ${data.data.created} (تُجوهل: ${data.data.skipped})`, "success");
+  else window.toast("فشل الاستيراد", "error");
+}
+async function exportTenant() {
+  const res = await fetch("/api/v1/export/tenant", { headers: window.apiHeaders() });
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "tenant-export.json";
+  a.click();
+  window.toast("تم التحميل", "success");
+}
+</script>
+{% endblock %}

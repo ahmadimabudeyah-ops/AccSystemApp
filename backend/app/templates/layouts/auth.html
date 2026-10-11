@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="container-fluid" style="min-height:100vh;background:var(--gradient-subtle)">
+  <div class="row g-0" style="min-height:100vh">
+    <div class="col-lg-6 d-flex align-items-center justify-content-center p-4">
+      <div class="card fade-in" style="max-width:440px;width:100%">
+        <div class="text-center mb-3">
+          <div class="brand-logo" style="font-size:32px;color:var(--brown-700)">دفتر الأصالة</div>
+          <h1 style="font-size:22px">{% block auth_heading %}أهلًا بك{% endblock %}</h1>
+          <p style="color:var(--text-soft)">{% block auth_subtitle %}{% endblock %}</p>
+        </div>
+        {% include "partials/flash_messages.html" %}
+        {% block auth_form %}{% endblock %}
+      </div>
+    </div>
+    <div class="col-lg-6 d-none d-lg-flex align-items-center justify-content-center" style="background:var(--gradient-luxury);color:#fff">
+      <div class="text-center p-4">
+        <div style="font-size:64px">◈</div>
+        <h2 style="font-weight:900">محاسبة عربية أصيلة</h2>
+        <p>دقة دفتر الأستاذ بروح القهوة العربية</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
