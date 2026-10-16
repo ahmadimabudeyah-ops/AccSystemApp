@@ -1,4 +1,74 @@
 {% extends "layouts/dashboard.html" %}
 {% block title %}{{ page.title }}{% endblock %}
-{% block content %}{% include "shared/_list_body.html" %}{% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/tables.js') }}"></script>{% endblock %}
+{% block content %}
+<div class="d-flex justify-between align-center mb-3">
+  <h1>{{ page.title }}</h1>
+  <div class="d-flex gap-2">
+    <button class="btn btn-secondary" onclick="exportTable('main-table')"><i class="fa-solid fa-download"></i> تصدير</button>
+    <a href="{{ page.new_url }}" class="btn btn-primary"><i class="fa-solid fa-plus"></i> جديد</a>
+  </div>
+</div>
+<div class="row g-3 mb-3" id="acc-stats">
+  <div class="col-md-3"><div class="card stat-card"><span class="stat-ico">📊</span><div><div class="stat-label">إجمالي الحسابات</div><strong class="stat-num" id="st-total">…</strong></div></div></div>
+  <div class="col-md-3"><div class="card stat-card"><span class="stat-ico">📁</span><div><div class="stat-label">أقسام</div><strong class="stat-num" id="st-sections">…</strong></div></div></div>
+  <div class="col-md-3"><div class="card stat-card"><span class="stat-ico">📂</span><div><div class="stat-label">أستاذ عام</div><strong class="stat-num" id="st-generals">…</strong></div></div></div>
+  <div class="col-md-3"><div class="card stat-card"><span class="stat-ico">✅</span><div><div class="stat-label">تفصيلية</div><strong class="stat-num" id="st-details">…</strong></div></div></div>
+</div>
+<div class="card mb-3">
+  {% set action = page.search_action %}{% include "partials/search_bar.html" %}
+  <div class="d-flex gap-2 mt-2 acc-filters">
+    <select class="form-control" id="flt-role" aria-label="المستوى">
+      <option value="">المستوى: الكل</option>
+      <option value="section">قسم</option><option value="general">أستاذ عام</option>
+      <option value="subsidiary">أستاذ مساعد</option><option value="detail">تفصيلي</option>
+      <option value="unclassified">غير مصنف</option>
+    </select>
+    <select class="form-control" id="flt-type" aria-label="التصنيف">
+      <option value="">التصنيف: الكل</option>
+      <option value="asset">أصول</option><option value="liability">التزامات</option>
+      <option value="equity">حقوق ملكية</option><option value="income">إيرادات</option>
+      <option value="expense">مصروفات</option>
+    </select>
+    <select class="form-control" id="flt-bal" aria-label="الطبيعة">
+      <option value="">الطبيعة: الكل</option>
+      <option value="debit">مدين</option><option value="credit">دائن</option>
+    </select>
+    <select class="form-control" id="flt-status" aria-label="الحالة">
+      <option value="">الحالة: الكل</option>
+      <option value="active">نشط</option><option value="inactive">غير نشط</option>
+      <option value="suspended">موقوف</option>
+    </select>
+    <button class="btn btn-secondary" id="flt-clear" type="button">مسح</button>
+  </div>
+</div>
+<div class="card">
+  <div class="table-wrap"><table class="table-lux" id="main-table">
+    <thead><tr>
+      <th><input type="checkbox" id="sel-all" aria-label="تحديد الكل"></th>
+      <th data-key="code">الرمز</th><th data-key="name_ar">الاسم</th>
+      <th data-key="hierarchy_role">المستوى</th><th data-key="account_type">التصنيف</th>
+      <th data-key="normal_balance">الطبيعة</th><th data-key="status" data-badge="1">الحالة</th>
+      <th>إجراءات</th>
+    </tr></thead>
+    <tbody data-api="accounts" data-detail="/accounts">
+      <tr><td colspan="8">{% set message = page.empty %}{% set new_url = page.new_url %}{% include "partials/empty_state.html" %}</td></tr>
+    </tbody>
+  </table></div>
+  <div class="d-flex gap-2 align-center mt-3 acc-bulk">
+    <label><input type="checkbox" id="sel-all-2" aria-label="تحديد الكل"> تحديد الكل (<span id="sel-count">0</span>)</label>
+    <button class="btn btn-secondary btn-sm" id="bulk-deactivate" type="button">تعطيل المحدد</button>
+    <button class="btn btn-secondary btn-sm" id="bulk-activate" type="button">تفعيل المحدد</button>
+  </div>
+  <div class="d-flex gap-2 align-center mt-2">
+    <label>الصفوف:
+      <select id="page-size" class="form-control" style="width:auto;display:inline-block">
+        <option value="10">10</option><option value="50" selected>50</option><option value="100">100</option>
+      </select>
+    </label>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tables.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/accounts-list.js') }}?v=1"></script>
+{% endblock %}

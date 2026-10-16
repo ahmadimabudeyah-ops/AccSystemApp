@@ -80,6 +80,27 @@ def get_journal(j_id):
                              "requires_approval": j.requires_approval, "allow_manual": j.allow_manual}})
 
 
+@bp.put("/journals/<uuid:j_id>")
+@jwt_required()
+def update_journal(j_id):
+    denied = _deny("journals.create")
+    if denied:
+        return denied
+    j = db.session.get(Journal, j_id)
+    if j is None or j.is_deleted or str(j.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    data = request.get_json(force=True) or {}
+    me = uuid.UUID(str(get_jwt_identity()))
+    for field in ("name", "type", "currency_id", "is_active",
+                  "requires_approval", "allow_manual"):
+        if field in data:
+            setattr(j, field, data[field])
+    j.updated_by = me
+    db.session.commit()
+    return jsonify({"data": {"id": str(j.id), "code": j.code, "name": j.name,
+                             "type": j.type}})
+
+
 # ------------------------------------------------------------- entries
 
 def _dump_entry(e: JournalEntry) -> dict:
@@ -117,18 +138,23 @@ def list_entries():
 @bp.post("/journal-entries")
 @jwt_required()
 def create_entry():
+    """إنشاء قيد يدوي: المصدر يُفرض من مسار الخادم (manual).
+
+    أي source_module/entry_type يرسله العميل يُتجاهل — منع تزوير المصدر
+    للالتفاف على allow_manual=False أو فصل المهام (صانع ≠ معتمد).
+    """
     denied = _deny("journals.post")
     if denied:
         return denied
     data = request.get_json(force=True)
     idem = request.headers.get("Idempotency-Key")
     header = {"tenant_id": uuid.UUID(str(g.tenant_id)), "entity_id": uuid.UUID(str(data["entity_id"])),
-                  "journal_id": uuid.UUID(str(data["journal_id"])), "entry_type": data.get("entry_type", "manual"),
+                  "journal_id": uuid.UUID(str(data["journal_id"])), "entry_type": "manual",
               "document_date": date.fromisoformat(data["document_date"]),
               "posting_date": date.fromisoformat(data["posting_date"]),
               "description": data.get("description"), "reference": data.get("reference"),
-              "source_module": data.get("source_module", "manual"),
-              "source_document_id": uuid.UUID(str(data["source_document_id"])) if data.get("source_document_id") else None,
+              "source_module": "manual",
+              "source_document_id": None,
               "source_event_key": data.get("source_event_key") or idem,
               "currency_id": data.get("currency_id", "JOD"),
               "exchange_rate": data.get("exchange_rate", 1)}
@@ -153,8 +179,20 @@ def get_entry(entry_id):
 @bp.get("/journal-entries/<uuid:entry_id>/lines")
 @jwt_required()
 def entry_lines(entry_id):
+    e = db.session.get(JournalEntry, entry_id)
+    if e is None or e.is_deleted or str(e.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    from ...models.account import Account
     rows = db.session.query(JournalLine).filter_by(entry_id=entry_id, is_deleted=False).order_by(JournalLine.line_number).all()
+    acc_ids = {l.account_id for l in rows}
+    acc_map = {}
+    if acc_ids:
+        for a in db.session.query(Account).filter(Account.id.in_(acc_ids)).all():
+            if str(a.tenant_id) == str(g.tenant_id):
+                acc_map[str(a.id)] = {"code": a.code, "name_ar": a.name_ar, "name_en": a.name_en}
     return jsonify({"data": [{"line_number": l.line_number, "account_id": str(l.account_id),
+                               "account_code": (acc_map.get(str(l.account_id)) or {}).get("code"),
+                               "account_name": (acc_map.get(str(l.account_id)) or {}).get("name_ar"),
                                "debit": float(l.debit), "credit": float(l.credit),
                                "dimensions": l.dimensions, "description": l.description} for l in rows]})
 
@@ -197,7 +235,7 @@ def approve_entry(entry_id):
         return denied
     data = request.get_json(force=True) or {}
     e = db.session.get(JournalEntry, entry_id)
-    if e is None or e.is_deleted:
+    if e is None or e.is_deleted or str(e.tenant_id) != str(g.tenant_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     try:
         if data.get("approval_id"):
@@ -216,6 +254,9 @@ def approve_entry(entry_id):
 @bp.get("/journal-entries/<uuid:entry_id>/approvals")
 @jwt_required()
 def entry_approvals(entry_id):
+    e = db.session.get(JournalEntry, entry_id)
+    if e is None or e.is_deleted or str(e.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     rows = db.session.query(EntryApproval).filter_by(entry_id=entry_id, is_deleted=False).all()
     return jsonify({"data": [{"id": str(a.id), "approver_id": str(a.approver_id),
                               "status": a.status, "reason": a.reason,
@@ -226,6 +267,9 @@ def entry_approvals(entry_id):
 @bp.get("/journal-entries/<uuid:entry_id>/comments")
 @jwt_required()
 def entry_comments(entry_id):
+    e = db.session.get(JournalEntry, entry_id)
+    if e is None or e.is_deleted or str(e.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     rows = db.session.query(EntryComment).filter_by(entry_id=entry_id, is_deleted=False).order_by(EntryComment.commented_at).all()
     return jsonify({"data": [{"id": str(c.id), "comment": c.comment,
                               "commented_by": str(c.commented_by),
@@ -236,9 +280,12 @@ def entry_comments(entry_id):
 @bp.post("/journal-entries/<uuid:entry_id>/comments")
 @jwt_required()
 def add_comment(entry_id):
+    denied = _deny("journals.create")
+    if denied:
+        return denied
     data = request.get_json(force=True)
     e = db.session.get(JournalEntry, entry_id)
-    if e is None or e.is_deleted:
+    if e is None or e.is_deleted or str(e.tenant_id) != str(g.tenant_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     me = uuid.UUID(str(get_jwt_identity()))
     c = EntryComment(tenant_id=e.tenant_id, entity_id=e.entity_id, entry_id=e.id,
@@ -254,9 +301,12 @@ def add_comment(entry_id):
 @bp.post("/journal-entries/<uuid:entry_id>/attachments")
 @jwt_required()
 def add_attachment(entry_id):
+    denied = _deny("journals.create")
+    if denied:
+        return denied
     data = request.get_json(force=True)
     e = db.session.get(JournalEntry, entry_id)
-    if e is None or e.is_deleted:
+    if e is None or e.is_deleted or str(e.tenant_id) != str(g.tenant_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     me = uuid.UUID(str(get_jwt_identity()))
     a = EntryAttachment(tenant_id=e.tenant_id, entity_id=e.entity_id, entry_id=e.id,

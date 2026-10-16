@@ -1,0 +1,148 @@
+{% extends "layouts/dashboard.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<h1 class="mb-3">{{ page.title }}</h1>
+<div class="card">
+  <form id="account-form"
+        data-api-post="{{ page.api_post }}" data-redirect="{{ page.redirect_url or '/accounts' }}"
+        {% if page.method %}data-method="{{ page.method }}"{% endif %}
+        {% if page.account_id %}data-account="{{ page.account_id }}"{% endif %}
+        novalidate>
+    <div id="acc-alert"></div>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label" for="acc-role">مستوى الحساب <span class="req">*</span></label>
+        <select class="form-control" id="acc-role" name="hierarchy_role" required>
+          <option value="">اختر المستوى…</option>
+          <option value="section">قسم محاسبي (بلا أب)</option>
+          <option value="general">أستاذ عام (تحت قسم)</option>
+          <option value="subsidiary">أستاذ مساعد (تحت أستاذ عام)</option>
+          <option value="detail">حساب تفصيلي (تحت أستاذ مساعد — يقبل الحركات)</option>
+        </select>
+        <small class="form-hint" id="role-hint"></small>
+      </div>
+      <div class="col-md-6" id="wrap-legacy" hidden>
+        <div class="alert alert-warn" id="legacy-note"></div>
+      </div>
+    </div>
+    <div class="row g-3 mt-1" id="ancestors">
+      <div class="col-md-4" data-anc="section" hidden>
+        <label class="form-label">القسم <span class="req">*</span></label>
+        <div class="d-flex gap-1">
+          <select class="form-control" id="sel-section"><option value="">اختر…</option></select>
+        </div>
+        <input class="form-control mt-1" id="q-section" placeholder="بحث برقم أو اسم…" aria-label="بحث قسم">
+      </div>
+      <div class="col-md-4" data-anc="general" hidden>
+        <label class="form-label">الأستاذ العام <span class="req">*</span></label>
+        <select class="form-control" id="sel-general"><option value="">اختر القسم أولًا…</option></select>
+        <input class="form-control mt-1" id="q-general" placeholder="بحث برقم أو اسم…" aria-label="بحث أستاذ عام">
+      </div>
+      <div class="col-md-4" data-anc="subsidiary" hidden>
+        <label class="form-label">الأستاذ المساعد <span class="req">*</span></label>
+        <select class="form-control" id="sel-subsidiary"><option value="">اختر العام أولًا…</option></select>
+        <input class="form-control mt-1" id="q-subsidiary" placeholder="بحث برقم أو اسم…" aria-label="بحث أستاذ مساعد">
+      </div>
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-md-3">
+        <label class="form-label" for="f-code">الرمز <span class="req">*</span></label>
+        <input class="form-control ltr" id="f-code" name="code" dir="ltr" required>
+        <small class="form-hint">نص يحفظ الأصفار — تغيير رمز مستخدم مرفوض بسبب موثق</small>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label" for="f-name">الاسم العربي <span class="req">*</span></label>
+        <input class="form-control" id="f-name" name="name_ar" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="f-name-en">الاسم الإنجليزي</label>
+        <input class="form-control ltr" id="f-name-en" name="name_en" dir="ltr">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="f-type">التصنيف <span class="req">*</span></label>
+        <select class="form-control" id="f-type" name="account_type" required>
+          <option value="">اختر…</option>
+          <option value="asset">أصول</option>
+          <option value="liability">التزامات</option>
+          <option value="equity">حقوق ملكية</option>
+          <option value="income">إيرادات</option>
+          <option value="expense">مصروفات</option>
+          <option value="contra_asset">مقابل أصول</option>
+          <option value="contra_liability">مقابل التزامات</option>
+          <option value="contra_equity">مقابل حقوق ملكية</option>
+          <option value="contra_income">مقابل إيرادات</option>
+          <option value="contra_expense">مقابل مصروفات</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="f-bal">الطبيعة <span class="req">*</span></label>
+        <select class="form-control" id="f-bal" name="normal_balance" required>
+          <option value="">اختر…</option>
+          <option value="debit">مدين</option>
+          <option value="credit">دائن</option>
+        </select>
+      </div>
+      <div class="col-md-3" id="wrap-status" {% if not page.account_id %}hidden{% endif %}>
+        <label class="form-label" for="f-status">الحالة</label>
+        <select class="form-control" id="f-status" name="status">
+          <option value="active">نشط</option>
+          <option value="inactive">غير نشط</option>
+          <option value="suspended">موقوف</option>
+        </select>
+        <small class="form-hint">التعطيل يمنع الجديد ولا يمحو التاريخ</small>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">قابلية الترحيل</label>
+        <div class="form-control" id="postable-badge" aria-live="polite">—</div>
+      </div>
+    </div>
+    <details class="mt-3">
+      <summary>خصائص متقدمة</summary>
+      <div class="row g-3 mt-1">
+        <div class="col-md-3">
+          <label class="form-label" for="f-ctl">الوظيفة الرقابية</label>
+          <select class="form-control" id="f-ctl" name="control_type">
+            <option value="general">عامة</option>
+            <option value="customer">عملاء</option>
+            <option value="supplier">موردون</option>
+            <option value="employee">موظفون</option>
+            <option value="inventory">مخزون</option>
+            <option value="asset">أصول</option>
+            <option value="bank">بنكية</option>
+            <option value="cash">نقدية</option>
+            <option value="tax">ضريبية</option>
+            <option value="loan">قروض</option>
+            <option value="equity">حقوق ملكية</option>
+            <option value="receivable">مدينة</option>
+            <option value="payable">دائنة</option>
+            <option value="prepaid">مدفوعة مقدمًا</option>
+            <option value="accrued">مستحقة</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="f-cur">تقييد العملة</label>
+          <select class="form-control" id="f-cur" name="currency_restriction">
+            <option value="">بلا تقييد</option>
+            <option value="JOD">JOD</option><option value="USD">USD</option>
+            <option value="EUR">EUR</option><option value="SAR">SAR</option>
+            <option value="AED">AED</option>
+          </select>
+        </div>
+        <div class="col-md-6 d-flex gap-3 align-items-end">
+          <label><input type="checkbox" id="f-manual" name="allow_manual" checked> يسمح بالترحيل اليدوي</label>
+          <label><input type="checkbox" id="f-partner" name="require_partner"> يتطلب طرفًا</label>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="f-notes">ملاحظات</label>
+          <textarea class="form-control" id="f-notes" name="notes" rows="2"></textarea>
+        </div>
+      </div>
+    </details>
+    <div class="d-flex gap-2 mt-4">
+      <button class="btn btn-primary" id="acc-submit" type="submit">حفظ</button>
+      {% if page.cancel_url %}<a class="btn btn-secondary" href="{{ page.cancel_url }}">إلغاء</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/accounts.js') }}?v=2"></script>{% endblock %}

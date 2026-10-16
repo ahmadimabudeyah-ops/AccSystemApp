@@ -19,8 +19,27 @@ ACCOUNT_TYPES = (
 )
 CONTROL_TYPES = (
     "general", "customer", "supplier", "employee", "inventory", "asset",
-    "bank", "cash", "tax", "loan", "equity",
+    "bank", "cash", "tax", "loan", "equity", "receivable", "payable",
+    "prepaid", "accrued",
 )
+# المستوى الوظيفي في الدليل (تصميم محلي، ليس قاعدة محاسبية عامة).
+# NULL = حساب قديم غير مصنف بالمستويات الجديدة (legacy) — لا يُستنتج تخمينًا.
+HIERARCHY_ROLES = ("section", "general", "subsidiary", "detail")
+# عائلات التصنيف: الحساب المقابل (contra) ينتمي لعائلة أصله.
+ACCOUNT_FAMILIES = {
+    "asset": "assets", "contra_asset": "assets",
+    "liability": "liabilities", "contra_liability": "liabilities",
+    "equity": "equity", "contra_equity": "equity",
+    "income": "income", "contra_income": "income",
+    "expense": "expenses", "contra_expense": "expenses",
+}
+# الطبيعة المقترحة (عرض/افتراض فقط — ليست قيد ترحيل).
+SUGGESTED_BALANCE = {
+    "asset": "debit", "expense": "debit",
+    "contra_liability": "debit", "contra_equity": "debit", "contra_income": "debit",
+    "liability": "credit", "equity": "credit", "income": "credit",
+    "contra_asset": "credit", "contra_expense": "credit",
+}
 
 
 class Account(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, VersionMixin, SoftDeleteMixin):
@@ -33,6 +52,18 @@ class Account(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, VersionMix
     name_ar: Mapped[str] = mapped_column(String(500), nullable=False)
     name_en: Mapped[str | None] = mapped_column(String(500))
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("accounts.id", ondelete="RESTRICT"), index=True)
+    # --- أعمدة موجودة في قاعدة البيانات ولم تكن في ORM ---
+    level: Mapped[int] = mapped_column(default=1, nullable=False)
+    path: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    is_leaf: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    currency_restriction: Mapped[str | None] = mapped_column(String(3))
+    require_dimensions: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    required_dimensions: Mapped[dict | list] = mapped_column(JSONB, default=list, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    extra: Mapped[dict] = mapped_column("metadata", JSONB, default=dict, nullable=False)
+    # المستوى الوظيفي الجديد (NULL = قديم غير مصنف).
+    hierarchy_role: Mapped[str | None] = mapped_column(String(20))
     account_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     control_type: Mapped[str] = mapped_column(String(30), default="general", nullable=False)
     is_postable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)

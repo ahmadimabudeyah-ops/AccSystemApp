@@ -17,6 +17,10 @@ class TaxReturn(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, VersionM
     period_code: Mapped[str] = mapped_column(String(20), nullable=False)
     sales_total: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
     tax_due: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
+    purchase_total: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
+    input_tax: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
+    output_tax: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
+    net_due: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
     filed_at: Mapped[datetime.datetime | None]
     filed_by: Mapped[uuid.UUID | None]
@@ -53,6 +57,7 @@ class VendorReturn(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, Versi
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id", ondelete="RESTRICT"))
     total_amount: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
+    vat_amount: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False)
     journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("journal_entries.id", ondelete="RESTRICT"))
     lines: Mapped[list["VendorReturnLine"]] = relationship(back_populates="return_", cascade="all, delete-orphan")

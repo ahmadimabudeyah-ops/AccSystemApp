@@ -58,7 +58,9 @@ for r in sorted(rules, key=str):
         if "<" in link or "{" in link:
             continue
         r2 = get(link)
-        if r2.status_code >= 400 and r2.status_code not in (302,):
+        # 405 is expected for links that point at POST-only actions; only a
+        # 404/500 means the target really does not exist.
+        if r2.status_code >= 400 and r2.status_code not in (302, 405):
             issues.append((url, f"dead-link {r2.status_code}", link))
     for m in re.finditer(r"<form([^>]*)>", html):
         tag = m.group(0)

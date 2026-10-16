@@ -115,11 +115,14 @@
 
 | البند | الوصف | السبب |
 |------|---------|-------|
-| Alembic env | `migrations/env.py`, `script.py.mako`, `alembic.ini` ناقصة | المسار المعتمد SQL؛ Alembic ثانوي |
-| `accounts/detail.html` | لا يحمل بيانات الحساب | يحتاج `GET /api/v1/accounts/<id>` endpoint |
-| تفاصيل الصنف/الموظف/الطالب | تعرض UUID فقط | يحتاج endpoints تفصيل مخصصة |
-| اختبارات pytest | 11 اختبار في 3 ملفات | محجوبة: PostgreSQL schema غير محدث (يفتقر `tax_id`)، Alembic ناقص |
-| سيناريوهات القبول الـ 9 | تشغيل حي | تتطلب Docker/PostgreSQL |
+| JoFotara certificate | `jofotara_service.submit` raises `NotImplementedError` until `JOFOTARA_BASE_URL`/API key + signing certificate are supplied; sandbox replies `sandbox_accepted` and never claims government acceptance | يحتاج شهادة من ZATCA |
+| الضرائب الأردنية | الشرائح في `income_tax_brackets` قابلة للضبط | تحتاج مراجعة ضريبية نهائية |
+| Redis/Celery | مُثبّتان لكن غير مستخدمتين | مطلوبتان فقط للمهام المتزامنة |
+
+**بُنيت في v1.1 (كانت مفتوحة سابقًا):**
+- Alembic: `migrations/env.py`, `script.py.mako`, `alembic.ini` (ونسخة داخل `migrations/`) + مراجعتان `0005`/`0006` → `flask db heads` يعمل ومختوم بالرأس.
+- صفحات التفاصيل (حساب/صنف/موظف/طالب): تعمل عبر `loadDocDetail` + `GET /api/v1/accounts/<id>/balance?mode=direct|aggregate` (مُتحقق).
+- قسم البحث والتواريخ والفترات: `scripts/check_sections.py` يغطي 58 قسمًا ويفشل على أي 404.
 
 ---
 

@@ -4,6 +4,7 @@
 {% block auth_subtitle %}أهلًا بعودتك، سجّل الدخول للمتابعة{% endblock %}
 {% block auth_form %}
 <form id="login-form" novalidate>
+  <div class="alert alert-error" id="login-error" hidden></div>
   <div class="mb-3">
     <label class="form-label" for="tenant">رمز المؤسسة <span class="req">*</span></label>
     <input class="form-control ltr" id="tenant" name="tenant_code" dir="ltr" placeholder="DEMO" value="DEMO" required>
@@ -22,19 +23,74 @@
 </form>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/forms.js') }}"></script>
+<script src="{{ url_for('static', filename='js/forms.js') }}?v=3"></script>
 <script>
+/* دخول مكتفٍ ذاتيًا: يعمل حتى لو فشل تحميل أي ملف JS خارجي */
 (function () {
   try {
     var q = new URLSearchParams(window.location.search);
     if (q.get("logged_out") === "1") {
-      sessionStorage.removeItem("access_token");
-      sessionStorage.removeItem("refresh_token");
-      sessionStorage.removeItem("tenant_id");
-      sessionStorage.removeItem("entity_id");
+      ["access_token", "refresh_token", "tenant_id", "entity_id"].forEach((k) => {
+        try { sessionStorage.removeItem(k); } catch (e) {}
+        try { localStorage.removeItem(k); } catch (e) {}
+      });
       history.replaceState(null, "", "{{ url_for('web_auth.login') }}");
     }
   } catch (e) { /* ignore */ }
+  function store(k, v) {
+    try { localStorage.setItem(k, v); } catch (e) {}
+    try { sessionStorage.setItem(k, v); } catch (e) {}
+  }
+  function fail(msg) {
+    var box = document.getElementById("login-error");
+    if (box) { box.textContent = msg; box.hidden = false; }
+    var btn = document.querySelector('#login-form button[type="submit"]');
+    if (btn) { btn.disabled = false; btn.textContent = "تسجيل الدخول"; }
+  }
+  document.addEventListener("DOMContentLoaded", function () {
+    var form = document.getElementById("login-form");
+    if (!form || form.dataset.bound === "1") return;
+    form.dataset.bound = "1";
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      var email = document.getElementById("email");
+      var password = document.getElementById("password");
+      var tenant = document.getElementById("tenant");
+      var btn = form.querySelector('button[type="submit"]');
+      var emailOk = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test((email.value || "").trim());
+      if (!emailOk) { fail("يرجى إدخال بريد إلكتروني صحيح"); email.focus(); return; }
+      if (!password.value) { fail("كلمة المرور مطلوبة"); password.focus(); return; }
+      btn.disabled = true;
+      btn.textContent = "جارٍ الدخول…";
+      fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Tenant-ID": tenant.value.trim() },
+        body: JSON.stringify({ username: email.value.trim(), password: password.value }),
+      }).then(function (res) {
+        if (!res.ok) throw new Error("auth");
+        return res.json();
+      }).then(function (data) {
+        store("access_token", data.access_token);
+        store("refresh_token", data.refresh_token);
+        var payload = {};
+        try { payload = JSON.parse(atob(data.access_token.split(".")[1])); } catch (err) {}
+        if (payload.tenant_id) store("tenant_id", payload.tenant_id);
+        if (!payload.tenant_id) { window.location.href = "/dashboard"; return; }
+        fetch("/api/v1/tenants/" + payload.tenant_id + "/entities", {
+          headers: { "Authorization": "Bearer " + data.access_token, "X-Tenant-ID": payload.tenant_id }
+        }).then(function (r) { return r.ok ? r.json() : null; }).then(function (ed) {
+          var list = (ed && ed.data) || ed;
+          if (list && list.length) store("entity_id", list[0].id);
+          window.location.href = "/dashboard";
+        }).catch(function () { window.location.href = "/dashboard"; });
+      }).catch(function (err) {
+        fail(err && err.message === "auth"
+          ? "بيانات الدخول غير صحيحة — تحقق من البريد وكلمة المرور"
+          : "تعذر الاتصال بالخادم — تحقق أن الخادم يعمل ثم أعد المحاولة");
+      });
+    }, true);
+  });
 })();
 </script>
 {% endblock %}

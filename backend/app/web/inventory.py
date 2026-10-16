@@ -50,7 +50,8 @@ def quants():
 
 @bp.get("/adjustments")
 def adjustments():
-    return _list("تعديلات الجرد", "التعديلات", "inv-q", "web_inventory.new_adjustment")
+    return _list("تعديلات الجرد", "التعديلات", "inv-q", "web_inventory.new_adjustment",
+                 MOVE_COLS, "/api/v1/inventory/moves?move_type=adjustment")
 
 
 @bp.get("/adjustments/new")
@@ -72,7 +73,7 @@ def new_adjustment():
 @bp.post("/adjustments")
 def create_adjustment():
     # الإنشاء الفعلي عبر api_post أعلاه (يحمل JWT). هذا المسار القديم لا يحفظ.
-    flash("استخدم نموذج التعديل — الحفظ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_inventory.adjustments"))
 
 
@@ -106,13 +107,14 @@ def count_detail(c_id):
 
 @bp.post("/counts")
 def create_count():
-    flash("استخدم نموذج الجرد — الحفظ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_inventory.counts"))
 
 
 @bp.get("/transfers")
 def transfers():
-    return _list("التحويلات", "التحويلات", "inv-t", "web_inventory.new_transfer")
+    return _list("التحويلات", "التحويلات", "inv-t", "web_inventory.new_transfer",
+                 MOVE_COLS, "/api/v1/inventory/moves?move_type=internal")
 
 
 @bp.get("/transfers/new")
@@ -133,7 +135,7 @@ def new_transfer():
 
 @bp.post("/transfers")
 def create_transfer():
-    flash("استخدم نموذج التحويل — الحفظ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_inventory.transfers"))
 
 

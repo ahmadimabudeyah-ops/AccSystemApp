@@ -1,4 +1,4 @@
-"""RBAC coverage check: MATRIX codes vs catalog, API perms vs catalog, role details."""
+﻿"""RBAC coverage check: MATRIX codes vs catalog, API perms vs catalog, role details."""
 import sys
 
 sys.path.insert(0, ".")
@@ -11,7 +11,7 @@ spec = importlib.util.spec_from_file_location("_m", "scripts/seed_rbac.py")
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
+from _ids import TID, EID  # noqa: E402
 app = create_app()
 with app.app_context():
     db.session.execute(text("SET app.current_tenant_id = :t"), {"t": TID})

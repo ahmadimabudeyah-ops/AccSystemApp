@@ -68,6 +68,8 @@ def create_category():
 def _dump(p: Product) -> dict:
     return {"id": str(p.id), "entity_id": str(p.entity_id), "code": p.code,
             "name_ar": p.name_ar, "product_type": p.product_type,
+            "category_id": str(p.category_id) if p.category_id else None,
+            "base_uom_id": str(p.base_uom_id) if p.base_uom_id else None,
             "sale_price": float(p.sale_price), "avg_cost": float(p.avg_cost),
             "status": p.status}
 
@@ -165,6 +167,10 @@ def create_warehouse():
 @bp.get("/warehouses/<uuid:wh_id>/locations")
 @jwt_required()
 def warehouse_locations(wh_id):
+    from ...models.product import Warehouse
+    w = db.session.get(Warehouse, wh_id)
+    if w is None or w.is_deleted or str(w.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     rows = db.session.query(Location).filter_by(warehouse_id=wh_id, is_deleted=False).all()
     return jsonify({"data": [{"id": str(l.id), "code": l.code, "name_ar": l.name_ar,
                               "location_type": l.location_type} for l in rows]})

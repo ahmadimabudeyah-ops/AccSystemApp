@@ -4,3 +4,6 @@ __pycache__/
 .env
 instance/
 .pytest_cache/
+app.log*
+*.log
+server_*.log

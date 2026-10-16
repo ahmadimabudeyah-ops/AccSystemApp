@@ -117,15 +117,28 @@ def new_bank_account():
 
 @bp.get("/bank-statements")
 def bank_statements():
-    return _list("كشوف البنوك", "الكشوف", "tre-b")
+    return _list("كشوف البنوك", "الكشوف", "tre-b", "web_treasury.new_bank_statement",
+                 [{"key": "id", "label": "المعرف"}, {"key": "status", "label": "الحالة", "badge": True}],
+                 "/api/v1/treasury/bank-statements")
+
+
+@bp.get("/bank-statements/new")
+def new_bank_statement():
+    return render_template("treasury/form.html", **h.ctx(
+        "كشف جديد", [("الخزينة", None), ("الكشوف", url_for("web_treasury.bank_statements")), ("جديد", None)],
+        active="tre-b", api_post="/api/v1/treasury/bank-statements/import", redirect_url="/treasury/bank-statements",
+        fields=[{"name": "bank_account_id", "label": "الحساب البنكي", "type": "select", "source": "bank_accounts", "required": True},
+                {"name": "lines", "label": "البنود (JSON)", "type": "textarea"}],
+        cancel_url=url_for("web_treasury.bank_statements")))
 
 
 @bp.get("/bank-reconciliation")
 def bank_reconciliation():
-    return render_template("treasury/detail.html", **h.ctx(
+    return render_template("treasury/list.html", **h.ctx(
         "المطابقة البنكية", [("الخزينة", None), ("المطابقة", None)], active="tre-b",
-        actions=[{"label": "مطابقة آلية", "url": url_for("web_treasury.bank_reconciliation"), "style": "gold"}],
-        sections=[{"title": "الفروق", "rows": [("غير مطابَق", "٠")]}]))
+        columns=[{"key": "doc_number", "label": "المستند"}, {"key": "amount", "label": "المبلغ", "num": True},
+                 {"key": "status", "label": "الحالة", "badge": True}],
+        rows=[], api_src="/api/v1/treasury/bank-statements", empty="اختر كشفًا للمطابقة من قائمة الكشوف"))
 
 
 @bp.get("/checks")
@@ -172,3 +185,41 @@ def new_transfer():
                 {"name": "amount", "label": "المبلغ", "type": "number", "required": True, "ltr": True},
                 {"name": "notes", "label": "ملاحظات"}],
         cancel_url=url_for("web_treasury.transfers")))
+
+
+# ------------------------------------------------------------- check books
+
+CB_COLS = [{"key": "code", "label": "الرمز"}, {"key": "start_no", "label": "من رقم", "ltr": True},
+           {"key": "end_no", "label": "إلى رقم", "ltr": True},
+           {"key": "status", "label": "الحالة", "badge": True}]
+
+
+@bp.get("/check-books")
+def check_books():
+    return _list("دفاتر الشيكات", "دفاتر الشيكات", "tre-cb", "web_treasury.new_check_book",
+                 CB_COLS, "/api/v1/treasury/check-books")
+
+
+@bp.get("/check-books/new")
+def new_check_book():
+    return render_template("treasury/form.html", **h.ctx(
+        "دفتر شيكات جديد", [("الخزينة", None), ("دفاتر الشيكات", url_for("web_treasury.check_books")), ("جديد", None)],
+        active="tre-cb", api_post="/api/v1/treasury/check-books", redirect_url="/treasury/check-books",
+        fields=[{"name": "bank_account_id", "label": "الحساب البنكي", "type": "select", "source": "accounts", "required": True},
+                {"name": "code", "label": "الرمز", "required": True, "ltr": True},
+                {"name": "start_no", "label": "من رقم", "required": True, "ltr": True},
+                {"name": "end_no", "label": "إلى رقم", "required": True, "ltr": True}],
+        cancel_url=url_for("web_treasury.check_books")))
+
+
+# ------------------------------------------------------------- bank reconciliations
+
+REC_COLS = [{"key": "reconciled_on", "label": "تاريخ التسوية"},
+            {"key": "matched_count", "label": "عدد المطابقات", "num": True},
+            {"key": "status", "label": "الحالة", "badge": True}]
+
+
+@bp.get("/bank-reconciliations")
+def bank_reconciliations():
+    return _list("التسويات المصرفية", "التسويات", "tre-bs", None,
+                 REC_COLS, "/api/v1/treasury/bank-reconciliations")

@@ -23,7 +23,9 @@ for r in app.url_map.iter_rules():
         continue
     n += 1
     rv = client.get(url)
-    if rv.status_code != 200:
+    # / and /logout legitimately redirect to the login screen when not authed
+    ok = (url in ("/", "/logout") and rv.status_code == 302) or rv.status_code == 200
+    if not ok:
         fails.append((url, rv.status_code))
 print("RENDERED:", n, "FAILS:", len(fails))
 for f in fails:

@@ -184,3 +184,20 @@ currencies/countries/payment_methods كبيانات (5 عملات + طرق قب�
 - **التقسيم:** شهري للقيود/السطور/الفواتير/التدقيق (4b عند 5M صف)؛ ربعي للمخزون. المفتاح ضمن PK (قيد مركب) — موثق في phase4.
 - **النسخ الاحتياطي:** يومي كامل + WAL مستمر + PITR (30 يومًا) + اختبار استعادة أسبوعي + نسختان جغرافيتان + تشفير AES-256.
 - **الأداء:** التقارير من اللقطات؛ الأرصدة من الكاش القابل لإعادة البناء مع مطابقة دورية؛ ترقيم 50؛ `EXPLAIN` للاستعلامات الحرجة في CI.
+
+
+---
+
+## 26. تغييرات المخطّط (2026-10-13)
+
+يُدار المخطّط عبر ``db/sql/phase*.sql`` + ``fix_*.sql`` (لا alembic). تغييرات هذه الجلسة:
+
+- ``customer_invoices.cogs_posted BOOLEAN NOT NULL DEFAULT FALSE`` — يمنع ازدواج تكلفة البضاعة المباعة (التسليم مقابل الفاتورة). Migration: ``db/sql/fix_invoice_cogs_flag.sql``.
+- ``checks.journal_entry_id UUID REFERENCES journal_entries(id)`` — القيد الناتج عن صرف الشيك.
+- ``checks.reversal_entry_id UUID REFERENCES journal_entries(id)`` — قيد عكس الشيك المرتد.
+- ``transfers.journal_entry_id UUID REFERENCES journal_entries(id)`` — قيد التحويل المخزّن.
+- ``stock_moves.journal_entry_id UUID REFERENCES journal_entries(id)`` — قيد COGS/التسوية.
+
+قيد ``control_type`` يقبل فقط: ``general, customer, supplier, employee, inventory, asset, bank, cash, tax, loan, equity, receivable, payable, prepaid, accrued``.
+
+**ملاحظة صلاحيات:** مستخدم التطبيق ``accounting`` لا يملك الجداول (المالك ``postgres``)، لذلك تُطبَّق تغييرات المخطّط يدويًا بـ ``psql`` بصلاحيات ``postgres``، لا عبر SQLAlchemy.

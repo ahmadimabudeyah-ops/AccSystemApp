@@ -7,7 +7,7 @@ GET /api/v1/reports/account-balance?account_id=[&as_of=]
 from __future__ import annotations
 import uuid
 from datetime import date
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required, get_jwt
 from ...extensions import db
 from ...services import balance_service
@@ -28,7 +28,21 @@ def trial_balance():
     denied = _deny()
     if denied:
         return denied
-    tb = balance_service.get_trial_balance(uuid.UUID(str(request.args["period_id"])))
+    if not request.args.get("period_id"):
+        return jsonify({"error": {"code": "PERIOD_REQUIRED", "message": "period_id is required"}}), 400
+    try:
+        pid = uuid.UUID(str(request.args["period_id"]))
+    except ValueError:
+        return jsonify({"error": {"code": "BAD_PERIOD_ID"}}), 400
+    from ...models.entity import FiscalPeriod, Entity
+    from flask import g as _g
+    p = db.session.get(FiscalPeriod, pid)
+    if p is None or p.is_deleted:
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    ent = db.session.get(Entity, p.entity_id)
+    if ent is None or str(ent.tenant_id) != str(_g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    tb = balance_service.get_trial_balance(pid)
     return jsonify({"data": tb})
 
 
@@ -95,24 +109,144 @@ def cash_flow():
         return denied
     """التدفقات النقدية: صافي حركة الحسابات النقدية (101*/102*) شهريًا."""
     from sqlalchemy import text as _text
+    from ...models.entity import Entity
+    if not request.args.get("entity_id"):
+        return jsonify({"error": {"code": "ENTITY_REQUIRED", "message": "entity_id is required"}}), 400
+    try:
+        eid = uuid.UUID(str(request.args["entity_id"]))
+    except ValueError:
+        return jsonify({"error": {"code": "BAD_ENTITY_ID"}}), 400
+    ent = db.session.get(Entity, eid)
+    if ent is None or ent.is_deleted or str(ent.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    # التدفقات النقدية بتصنيف: تشغيلي / استثماري / تمويلي
+    # تصنيف حسب بادئة رمز الحساب: 101/102 = نقدي، 15 = أصول ثابتة (استثماري)،
+    # 21/22 = قروض (تمويلي)، 30 = حقوق ملكية (تمويلي)، الباقي تشغيلي
     rows = db.session.execute(_text(
         "SELECT date_trunc('month', e.posting_date)::date AS m, "
-        "SUM(CASE WHEN l.debit > 0 THEN l.debit ELSE -l.credit END)::float AS net "
+        "SUM(CASE WHEN l.debit > 0 THEN l.debit ELSE -l.credit END)::float AS net, "
+        "CASE "
+        "  WHEN a.code LIKE '15%' THEN 'investing' "
+        "  WHEN a.code LIKE '21%' OR a.code LIKE '22%' OR a.code LIKE '30%' THEN 'financing' "
+        "  ELSE 'operating' "
+        "END AS category "
         "FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id "
         "JOIN accounts a ON a.id = l.account_id "
-        "WHERE e.entity_id = :en AND e.status = 'posted' AND e.is_deleted = FALSE "
-        "AND l.is_deleted = FALSE AND (a.code LIKE '101%' OR a.code LIKE '102%') "
-        "GROUP BY 1 ORDER BY 1"),
-        {"en": str(request.args["entity_id"])}).all()
-    return jsonify({"data": {"months": [{"month": r[0].isoformat()[:7], "net": r[1]} for r in rows],
-                             "total": round(sum(r[1] for r in rows), 3)}})
+        "WHERE e.entity_id = :en AND e.status IN ('posted','reversed') AND e.is_deleted = FALSE "
+        "AND l.is_deleted = FALSE AND (a.code LIKE '101%' OR a.code LIKE '102%' OR "
+        "  a.code LIKE '15%' OR a.code LIKE '21%' OR a.code LIKE '22%' OR a.code LIKE '30%') "
+        "GROUP BY 1, category ORDER BY 1"),
+        {"en": str(eid)}).all()
+    months = {}
+    for r in rows:
+        key = r[0].isoformat()[:7]
+        if key not in months:
+            months[key] = {"month": key, "operating": 0.0, "investing": 0.0, "financing": 0.0, "net": 0.0}
+        months[key][r[2]] = round(months[key][r[2]] + (r[1] or 0.0), 3)
+        months[key]["net"] = round(months[key]["net"] + (r[1] or 0.0), 3)
+    result = sorted(months.values(), key=lambda x: x["month"])
+    totals = {"operating": 0.0, "investing": 0.0, "financing": 0.0, "net": 0.0}
+    for m in result:
+        for k in totals:
+            totals[k] = round(totals[k] + m[k], 3)
+    return jsonify({"data": {"months": result, "totals": totals}})
+
+
+@bp.get("/ar-ap-reconciliation")
+@jwt_required()
+def ar_ap_reconciliation():
+    """مطابقة ذمم مدينة/دائنة: رصيد GL (1210/2010) مقابل مجموع أرصدة الفواتير المفتوحة."""
+    denied = _deny()
+    if denied:
+        return denied
+    from ...models.entity import Entity
+    from ...models.account import Account
+    from ...models.sales import CustomerInvoice
+    from ...models.purchases import VendorBill
+    from sqlalchemy import func as _func
+    from sqlalchemy import text as _text
+    if not request.args.get("entity_id"):
+        return jsonify({"error": {"code": "ENTITY_REQUIRED"}}), 400
+    try:
+        eid = uuid.UUID(str(request.args["entity_id"]))
+    except ValueError:
+        return jsonify({"error": {"code": "BAD_ENTITY_ID"}}), 400
+    ent = db.session.get(Entity, eid)
+    if ent is None or ent.is_deleted or str(ent.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    # رصيد GL للحساب الرقابي
+    def _gl_balance(code):
+        acc = db.session.query(Account).filter_by(
+            entity_id=eid, code=code, is_deleted=False).first()
+        if acc is None:
+            return None, None
+        bal = db.session.execute(_text(
+            "SELECT COALESCE(SUM(l.debit - l.credit),0)::float "
+            "FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id "
+            "WHERE l.account_id = :a AND e.entity_id = :en "
+            "AND e.status IN ('posted','reversed') AND e.is_deleted = FALSE "
+            "AND l.is_deleted = FALSE"),
+            {"a": str(acc.id), "en": str(eid)}).scalar()
+        return float(bal or 0), str(acc.id)
+    ar_gl, ar_acc_id = _gl_balance("1210")
+    ap_gl, ap_acc_id = _gl_balance("2010")
+    # Every status that carries a posted GL balance must be summed, otherwise GL
+    # and subledger diverge (e.g. a disputed invoice is already posted to AR).
+    OPEN = ("posted", "partially_paid", "disputed")
+    # مجموع أرصدة الفواتير المفتوحة (subledger)
+    ar_sub = db.session.query(_func.coalesce(_func.sum(CustomerInvoice.remaining_amount), 0)).filter(
+        CustomerInvoice.entity_id == eid, CustomerInvoice.is_deleted == False,  # noqa: E712
+        CustomerInvoice.status.in_(OPEN)).scalar()
+    ap_sub = db.session.query(_func.coalesce(_func.sum(VendorBill.remaining_amount), 0)).filter(
+        VendorBill.entity_id == eid, VendorBill.is_deleted == False,  # noqa: E712
+        VendorBill.status.in_(OPEN)).scalar()
+    # رسوم التعليم وأرصدة أخرى تنشر على حساب الذمم (1210) — تُدرج ليتم المطابقة
+    from ...models.edu import FeeContract
+    from sqlalchemy import text as _txt
+    edu_sub = db.session.execute(_txt(
+        "SELECT COALESCE(SUM(i.amount - i.paid_amount),0)::float "
+        "FROM fee_installments i JOIN fee_contracts c ON c.id = i.contract_id "
+        "WHERE c.entity_id = :e AND c.is_deleted = FALSE AND c.status != 'cancelled' "
+        "AND i.is_deleted = FALSE AND i.status != 'cancelled'"),
+        {"e": str(eid)}).scalar()
+    # أرصدة افتتاحية/قيود يدوية على حساب الذمم
+    manual_open = db.session.execute(_txt(
+        "SELECT COALESCE(SUM(l.debit - l.credit),0)::float "
+        "FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id "
+        "WHERE e.entity_id = :e AND e.source_module = 'manual' "
+        "AND e.status IN ('posted','reversed') AND e.is_deleted = FALSE "
+        "AND l.is_deleted = FALSE AND l.account_id IN "
+        "(SELECT id FROM accounts WHERE entity_id = :e AND code IN ('1210','2010'))"),
+        {"e": str(eid)}).scalar()
+    ar_other = float(edu_sub or 0) + float(manual_open or 0)
+    ar_diff = round((ar_gl or 0) - float(ar_sub or 0) - ar_other, 3)
+    # AP is a liability: the GL running balance is debit-credit, so an amount
+    # owed appears as a negative number while the subledger stores a positive
+    # outstanding amount.  Compare like-for-like by flipping the GL sign.
+    ap_diff = round(-(ap_gl or 0) - float(ap_sub or 0), 3)
+    return jsonify({"data": {
+        "ar": {"gl_balance": ar_gl, "subledger_balance": float(ar_sub or 0),
+               "other_receivables": round(ar_other, 3),
+               "difference": ar_diff, "reconciled": abs(ar_diff) < 0.01},
+        "ap": {"gl_balance": ap_gl, "subledger_balance": float(ap_sub or 0),
+               "difference": ap_diff, "reconciled": abs(ap_diff) < 0.01},
+    }})
 
 
 @bp.get("/fiscal-periods")
 @jwt_required()
 def fiscal_periods():
-    from ...models.entity import FiscalPeriod
+    from ...models.entity import FiscalPeriod, Entity
     from ...extensions import db
+    if not request.args.get("entity_id"):
+        return jsonify({"error": {"code": "ENTITY_REQUIRED"}}), 400
+    try:
+        eid = uuid.UUID(str(request.args["entity_id"]))
+    except ValueError:
+        return jsonify({"error": {"code": "BAD_ENTITY_ID"}}), 400
+    ent = db.session.get(Entity, eid)
+    if ent is None or ent.is_deleted or str(ent.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     rows = db.session.query(FiscalPeriod).filter_by(
         entity_id=uuid.UUID(str(request.args["entity_id"])), is_deleted=False
     ).order_by(FiscalPeriod.starts_on).all()
@@ -261,7 +395,7 @@ def budget_report():
             actual = db.session.execute(_text(
                 "SELECT COALESCE(SUM(l.debit - l.credit),0)::float FROM journal_lines l "
                 "JOIN journal_entries e ON e.id = l.entry_id "
-                "WHERE l.account_id = :a AND e.status = 'posted' AND e.is_deleted = FALSE "
+                "WHERE l.account_id = :a AND e.status IN ('posted','reversed') AND e.is_deleted = FALSE "
                 "AND l.is_deleted = FALSE AND e.posting_date BETWEEN :f AND :t"),
                 {"a": str(bl.account_id), "f": fy.starts_on, "t": fy.ends_on}).scalar() or 0.0
         lines.append({"account_code": acc.code if acc else "?",

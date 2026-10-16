@@ -1,4 +1,4 @@
-"""Debug portal view end to end."""
+﻿"""Debug portal view end to end."""
 import hashlib
 import sys
 
@@ -7,7 +7,7 @@ from app import create_app  # noqa: E402
 
 app = create_app()
 c = app.test_client()
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
+from _ids import TID, EID  # noqa: E402
 r = c.post("/api/v1/auth/login", json={"username": "admin", "password": "Admin@123"},
            headers={"X-Tenant-ID": TID})
 tok = r.get_json()["access_token"]

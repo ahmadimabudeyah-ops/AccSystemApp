@@ -8,10 +8,33 @@ def create_app(config_name: str | None = None) -> Flask:
     import logging
     from logging.handlers import RotatingFileHandler
     import os as _os
+
+    class _SafeRotatingFileHandler(RotatingFileHandler):
+        """تدوير آمن على ويندوز: عمليتا المُعيد (watcher+child) تمسكان نفس
+        الملف، وos.rename يفشل والملف مفتوح (WinError 32). ملاحظة: emit الأم
+        يبتلع الاستثناء داخليًا (handleError) لذلك يُتجاوز doRollover نفسه:
+        عند التعذر تُعاد الكتابة في نفس الملف بهدوء بدل ضجيج Logging error
+        مع كل طلب. (أثناء عمل خادم التطوير قد يكبر app.log فوق الحد حتى
+        إعادة التشغيل — نظّفه دوريًا)."""
+
+        def doRollover(self):
+            try:
+                super().doRollover()
+            except (PermissionError, OSError):
+                try:
+                    if self.stream:
+                        try:
+                            self.stream.close()
+                        except Exception:
+                            pass
+                    self.stream = self._open()
+                except Exception:
+                    pass
+
     _log = _os.path.join(_os.path.dirname(__file__), "..", "app.log")
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s %(message)s",
-                        handlers=[RotatingFileHandler(_log, maxBytes=2_000_000, backupCount=3),
+                        handlers=[_SafeRotatingFileHandler(_log, maxBytes=2_000_000, backupCount=3),
                                   logging.StreamHandler()])
     app = Flask(__name__)
     app.config.from_object(get_config(config_name))
@@ -50,6 +73,7 @@ def create_app(config_name: str | None = None) -> Flask:
     from .api.v1.imports import bp as imports_bp
     from .api.v1.provisioning import bp as provisioning_bp
     from .api.v1.settings import bp as settings_bp
+    from .api.v1.finance import bp as finance_bp
     from .web import register as register_web
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(tenants_bp, url_prefix="/api/v1/tenants")
@@ -70,6 +94,7 @@ def create_app(config_name: str | None = None) -> Flask:
     app.register_blueprint(misc_bp, url_prefix="/api/v1")
     app.register_blueprint(provisioning_bp, url_prefix="/api/v1")
     app.register_blueprint(settings_bp, url_prefix="/api/v1")
+    app.register_blueprint(finance_bp, url_prefix="/api/v1/finance")
     app.register_blueprint(biz_bp, url_prefix="/api/v1")
     app.register_blueprint(imports_bp, url_prefix="/api/v1")
     try:

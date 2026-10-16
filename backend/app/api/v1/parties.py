@@ -128,7 +128,7 @@ def party_statement(party_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     rows = (db.session.query(JournalLine, JournalEntry)
             .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
-            .filter(JournalLine.partner_id == p.id, JournalEntry.status == "posted",
+            .filter(JournalLine.partner_id == p.id, JournalEntry.status.in_(("posted", "reversed")),
                     JournalEntry.is_deleted.is_(False), JournalLine.is_deleted.is_(False))
             .order_by(JournalEntry.posting_date).all())
     lines = [{"date": e.posting_date.isoformat(), "doc": e.official_number,
@@ -136,3 +136,58 @@ def party_statement(party_id):
               "debit": float(l.debit), "credit": float(l.credit)} for l, e in rows]
     bal = sum(x["debit"] - x["credit"] for x in lines)
     return jsonify({"data": {"party_id": str(p.id), "lines": lines, "balance": round(bal, 3)}})
+
+
+# ------------------------------------------------------------- countries & cities (global)
+
+@bp.get("/countries")
+@jwt_required()
+def list_countries():
+    from ...models.addons import Country
+    rows = db.session.query(Country).filter_by(is_deleted=False).order_by(
+        Country.code).limit(300).all()
+    return jsonify({"data": [{"id": str(c.id), "code": c.code,
+                              "name_ar": c.name_ar, "name_en": c.name_en}
+                             for c in rows]})
+
+
+@bp.post("/countries")
+@jwt_required()
+def create_country():
+    denied = _deny("admin.*")
+    if denied:
+        return denied
+    from ...models.addons import Country
+    data = request.get_json(force=True)
+    c = Country(code=data["code"].upper()[:2], name_ar=data["name_ar"],
+                name_en=data["name_en"])
+    db.session.add(c)
+    db.session.commit()
+    return jsonify({"data": {"id": str(c.id), "code": c.code}}), 201
+
+
+@bp.get("/cities")
+@jwt_required()
+def list_cities():
+    from ...models.addons import City
+    q = db.session.query(City).filter_by(is_deleted=False)
+    if request.args.get("country_id"):
+        q = q.filter_by(country_id=uuid.UUID(request.args["country_id"]))
+    rows = q.order_by(City.code).limit(500).all()
+    return jsonify({"data": [{"id": str(c.id), "country_id": str(c.country_id),
+                              "code": c.code, "name_ar": c.name_ar} for c in rows]})
+
+
+@bp.post("/cities")
+@jwt_required()
+def create_city():
+    denied = _deny("admin.*")
+    if denied:
+        return denied
+    from ...models.addons import City
+    data = request.get_json(force=True)
+    c = City(country_id=uuid.UUID(str(data["country_id"])),
+             code=data["code"], name_ar=data["name_ar"])
+    db.session.add(c)
+    db.session.commit()
+    return jsonify({"data": {"id": str(c.id), "code": c.code}}), 201

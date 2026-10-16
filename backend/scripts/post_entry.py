@@ -1,11 +1,12 @@
-"""Post an entry as admin + trial balance. Usage: python scripts/post_entry.py <entry_id>"""
+﻿"""Post an entry as admin + trial balance. Usage: python scripts/post_entry.py <entry_id>"""
 import json
 import sys
 import urllib.request
 import urllib.error
 
-BASE = "http://127.0.0.1:5000"
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
+import os as _os
+BASE = "http://127.0.0.1:" + _os.getenv("BASE_PORT", "5000")
+from _ids import TID, EID  # noqa: E402
 
 
 def call(method, path, token=None, body=None):

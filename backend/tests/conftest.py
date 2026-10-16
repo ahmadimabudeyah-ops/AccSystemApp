@@ -18,6 +18,11 @@ def app():
 
 
 @pytest.fixture()
+def client(app):
+    return app.test_client()
+
+
+@pytest.fixture()
 def ctx(app):
     with app.app_context():
         from app.extensions import db

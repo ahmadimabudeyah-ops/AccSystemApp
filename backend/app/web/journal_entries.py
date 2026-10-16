@@ -37,7 +37,7 @@ def reverse(e_id):
     return render_template("journal_entries/reverse.html", **h.ctx(
         "عكس قيد", [("المحاسبة", None), ("القيود", url_for("web_entries.list")), ("عكس", None)],
         active="entries", api_post=f"/api/v1/journal-entries/{e_id}/reverse",
-        redirect_url=f"/journal-entries/{e_id}",
+        redirect_url="/journal-entries",
         fields=[{"name": "reason", "label": "سبب العكس", "type": "textarea", "required": True},
                 {"name": "reversal_date", "label": "تاريخ العكس", "type": "date", "required": True}],
         submit="تنفيذ العكس", cancel_url=url_for("web_entries.detail", e_id=e_id)))

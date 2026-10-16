@@ -56,6 +56,18 @@ def create_student():
     return jsonify({"data": {"id": str(s.id)}}), 201
 
 
+@bp.get("/students/<uuid:sid>")
+@jwt_required()
+def get_student(sid):
+    s = db.session.get(Student, sid)
+    if s is None or s.is_deleted or str(s.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    return jsonify({"data": {"id": str(s.id), "code": s.student_no,
+                             "student_no": s.student_no, "name_ar": s.full_name_ar,
+                             "full_name_ar": s.full_name_ar, "grade_level": s.grade_level,
+                             "status": s.status}})
+
+
 @bp.get("/guardians")
 @jwt_required()
 def list_guardians():
@@ -193,3 +205,149 @@ def withdraw_student(sid):
     s.status = "withdrawn"
     db.session.commit()
     return jsonify({"data": {"id": str(s.id), "status": s.status}})
+
+
+# ------------------------------------------------------------- academic years & terms
+
+@bp.get("/academic-years")
+@jwt_required()
+def list_academic_years():
+    from ...models.addons import AcademicYear
+    rows = db.session.query(AcademicYear).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(AcademicYear.starts_on.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(ay.id), "code": ay.code,
+                              "starts_on": ay.starts_on.isoformat(),
+                              "ends_on": ay.ends_on.isoformat(),
+                              "status": ay.status} for ay in rows]})
+
+
+@bp.post("/academic-years")
+@jwt_required()
+def create_academic_year():
+    denied = _deny()
+    if denied:
+        return denied
+    from ...models.addons import AcademicYear
+    data = request.get_json(force=True)
+    ay = AcademicYear(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=uuid.UUID(str(data["entity_id"])),
+        code=data["code"],
+        starts_on=date.fromisoformat(data["starts_on"]),
+        ends_on=date.fromisoformat(data["ends_on"]),
+        status="active",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(ay)
+    db.session.commit()
+    return jsonify({"data": {"id": str(ay.id), "code": ay.code}}), 201
+
+
+@bp.get("/academic-terms")
+@jwt_required()
+def list_academic_terms():
+    from ...models.addons import AcademicTerm
+    rows = db.session.query(AcademicTerm).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(AcademicTerm.starts_on.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(at.id), "year_id": str(at.year_id),
+                              "code": at.code, "name_ar": at.name_ar,
+                              "starts_on": at.starts_on.isoformat(),
+                              "ends_on": at.ends_on.isoformat()} for at in rows]})
+
+
+@bp.post("/academic-terms")
+@jwt_required()
+def create_academic_term():
+    denied = _deny()
+    if denied:
+        return denied
+    from ...models.addons import AcademicTerm
+    data = request.get_json(force=True)
+    at = AcademicTerm(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        year_id=uuid.UUID(str(data["year_id"])),
+        code=data["code"], name_ar=data["name_ar"],
+        starts_on=date.fromisoformat(data["starts_on"]),
+        ends_on=date.fromisoformat(data["ends_on"]),
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(at)
+    db.session.commit()
+    return jsonify({"data": {"id": str(at.id), "code": at.code}}), 201
+
+
+# ------------------------------------------------------------- grade levels
+
+@bp.get("/grade-levels")
+@jwt_required()
+def list_grade_levels():
+    from ...models.addons import GradeLevel
+    rows = db.session.query(GradeLevel).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(GradeLevel.order_no).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(gl.id), "code": gl.code,
+                              "name_ar": gl.name_ar, "order_no": gl.order_no} for gl in rows]})
+
+
+@bp.post("/grade-levels")
+@jwt_required()
+def create_grade_level():
+    denied = _deny()
+    if denied:
+        return denied
+    from ...models.addons import GradeLevel
+    data = request.get_json(force=True)
+    gl = GradeLevel(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=uuid.UUID(str(data["entity_id"])),
+        code=data["code"], name_ar=data["name_ar"],
+        order_no=data.get("order_no", 0),
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(gl)
+    db.session.commit()
+    return jsonify({"data": {"id": str(gl.id), "code": gl.code}}), 201
+
+
+# ------------------------------------------------------------- fee structures
+
+@bp.get("/fee-structures")
+@jwt_required()
+def list_fee_structures():
+    from ...models.addons import FeeStructure
+    rows = db.session.query(FeeStructure).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(FeeStructure.code).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(fs.id), "code": fs.code,
+                              "name_ar": fs.name_ar, "academic_year": fs.academic_year,
+                              "status": fs.status} for fs in rows]})
+
+
+@bp.post("/fee-structures")
+@jwt_required()
+def create_fee_structure():
+    denied = _deny()
+    if denied:
+        return denied
+    from ...models.addons import FeeStructure, FeeStructureLine
+    data = request.get_json(force=True)
+    fs = FeeStructure(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=uuid.UUID(str(data["entity_id"])),
+        code=data["code"], name_ar=data["name_ar"],
+        academic_year=data.get("academic_year", str(date.today().year)),
+        status="active",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(fs)
+    db.session.flush()
+    for l in data.get("lines", []):
+        db.session.add(FeeStructureLine(
+            tenant_id=g.tenant_id, structure_id=fs.id,
+            grade_code=l["grade_code"], amount=l["amount"],
+            created_by=uuid.UUID(str(get_jwt().get("sub"))),
+            updated_by=uuid.UUID(str(get_jwt().get("sub")))))
+    db.session.commit()
+    return jsonify({"data": {"id": str(fs.id), "code": fs.code}}), 201

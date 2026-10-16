@@ -58,7 +58,7 @@ def request_detail(r_id):
 
 @bp.post("/requests/<uuid:r_id>/approve")
 def approve_request(r_id):
-    flash("استخدم زر الاعتماد في صفحة التفاصيل — لم يُنفذ اعتماد", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_purchases.request_detail", r_id=r_id))
 
 
@@ -133,7 +133,7 @@ def new_bill():
 
 @bp.post("/bills")
 def create_bill():
-    flash("استخدم نموذج فاتورة المورد — الحفظ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_purchases.bills"))
 
 
@@ -152,20 +152,29 @@ def bill_detail(b_id):
 @bp.post("/bills/<uuid:b_id>/match")
 def match_bill(b_id):
     # التنفيذ الفعلي عبر زر التأكيد في صفحة التفاصيل (API).
-    flash("استخدم زر تأكيد المطابقة في صفحة التفاصيل — لم تُنفذ مطابقة", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_purchases.bill_detail", b_id=b_id))
 
 
 @bp.post("/bills/<uuid:b_id>/post")
 def post_bill(b_id):
-    flash("استخدم زر الترحيل في صفحة التفاصيل — لم يُرحّل شيء", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_purchases.bill_detail", b_id=b_id))
 
 
 @bp.get("/payments")
 def payments():
     return _list("دفعات الموردين", "الدفعات", "pur-p", "web_purchases.new_payment",
-                 VPAY_COLS, "/api/v1/purchases/payments")
+                 VPAY_COLS, "/api/v1/purchases/payments",
+                 detail_base="/purchases/payments")
+
+
+@bp.get("/payments/<uuid:pay_id>")
+def payment_detail(pay_id):
+    return render_template("purchases/detail.html", **h.ctx(
+        "تفاصيل الدفعة", [("المشتريات", None), ("الدفعات", url_for("web_purchases.payments")), ("التفاصيل", None)],
+        active="pur-p", doc_kind="vendor_payment", doc_id=pay_id,
+        sections=[]))
 
 
 @bp.get("/payments/new")
@@ -215,3 +224,41 @@ def new_vendor_return():
                 {"name": "warehouse_id", "label": "المستودع", "type": "select", "source": "warehouses"},
                 {"name": "reason", "label": "السبب", "type": "textarea", "required": True}],
         cancel_url=url_for("web_purchases.returns")))
+
+
+# ------------------------------------------------------------- purchase agreements
+
+@bp.get("/agreements")
+def agreements():
+    return _list("اتفاقيات الشراء", "الاتفاقيات", "pur-r", "web_purchases.new_agreement",
+                 [{"key": "code", "label": "الرقم"},
+                  {"key": "supplier_name", "label": "المورد"},
+                  {"key": "total_amount", "label": "الإجمالي", "num": True},
+                  {"key": "status", "label": "الحالة", "badge": True}],
+                 "/api/v1/purchases/agreements", "/purchases/agreements")
+
+
+@bp.get("/agreements/new")
+def new_agreement():
+    return render_template("purchases/form.html", **h.ctx(
+        "اتفاقية شراء جديدة", [("المشتريات", None), ("الاتفاقيات", url_for("web_purchases.agreements")), ("جديد", None)],
+        active="pur-r", api_post="/api/v1/purchases/agreements", redirect_url="/purchases/agreements",
+        single_line=True,
+        fields=[{"name": "supplier_id", "label": "المورد", "type": "select", "source": "suppliers", "required": True},
+                {"name": "product_id", "label": "الصنف", "type": "select", "source": "products"},
+                {"name": "qty", "label": "الكمية", "type": "number", "required": True, "ltr": True},
+                {"name": "unit_price", "label": "سعر الوحدة", "type": "number", "required": True, "ltr": True},
+                {"name": "start_date", "label": "تاريخ البداية", "type": "date"},
+                {"name": "end_date", "label": "تاريخ النهاية", "type": "date"},
+                {"name": "notes", "label": "ملاحظات", "type": "textarea"}],
+        cancel_url=url_for("web_purchases.agreements")))
+
+
+@bp.get("/agreements/<uuid:agr_id>")
+def agreement_detail(agr_id):
+    return render_template("purchases/detail.html", **h.ctx(
+        "تفاصيل اتفاقية الشراء", [("المشتريات", None), ("الاتفاقيات", url_for("web_purchases.agreements")), ("التفاصيل", None)],
+        active="pur-r", doc_kind="purchase_agreement", doc_id=agr_id,
+        actions=[{"label": "تأكيد", "api": True, "api_base": "/api/v1/purchases/agreements",
+                  "api_id": agr_id, "api_action": "confirm", "style": "primary"}],
+        sections=[]))

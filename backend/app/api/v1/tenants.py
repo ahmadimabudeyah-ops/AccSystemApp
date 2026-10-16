@@ -64,8 +64,9 @@ def list_branches(entity_id):
 @jwt_required()
 def list_fiscal_years():
     from ...models.entity import FiscalYear
-    from flask import request
-    q = db.session.query(FiscalYear).filter_by(is_deleted=False)
+    from flask import request, g as _g
+    q = db.session.query(FiscalYear).join(Entity, Entity.id == FiscalYear.entity_id).filter(
+        FiscalYear.is_deleted.is_(False), Entity.tenant_id == _g.tenant_id)
     if request.args.get("entity_id"):
         import uuid as _uuid
         eid = _uuid.UUID(str(request.args["entity_id"]))

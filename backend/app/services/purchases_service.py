@@ -35,7 +35,7 @@ def create_bill(*, tenant_id, entity_id, supplier_id, bill_date: date,
         fx = 1
     if fx <= 0:
         raise ValidationError("exchange_rate must be > 0")
-    from ..models.biz import Tax as _Tax
+    from ..models.treasury import Tax as _Tax
     sub = Decimal("0")
     tax = Decimal("0")
     enriched = []
@@ -51,7 +51,7 @@ def create_bill(*, tenant_id, entity_id, supplier_id, bill_date: date,
         t_amount = (net * rate / 100).quantize(Decimal("0.001"))
         sub += net
         tax += t_amount
-        enriched.append((l, net, t_amount))
+        enriched.append((l, net, t_amount, rate))
     grand = sub + tax
     number = sequence_service.next_doc_number(tenant_id=tenant_id, entity_id=entity_id,
                                               doctype="bill", year=bill_date.year)
@@ -64,7 +64,7 @@ def create_bill(*, tenant_id, entity_id, supplier_id, bill_date: date,
                       status="draft", notes=notes, created_by=actor_id, updated_by=actor_id)
     db.session.add(bill)
     db.session.flush()
-    for i, (l, net, t_amount) in enumerate(enriched, 1):
+    for i, (l, net, t_amount, rate) in enumerate(enriched, 1):
         product = db.session.get(Product, uuid.UUID(str(l["product_id"])))
         if product is None:
             raise ValidationError(f"Unknown product: {l['product_id']}")
@@ -72,14 +72,39 @@ def create_bill(*, tenant_id, entity_id, supplier_id, bill_date: date,
             tenant_id=tenant_id, bill_id=bill.id, line_number=i, product_id=product.id,
             description=l.get("description", product.name_ar), qty=l["qty"],
             unit_price=l["unit_price"], line_total=net + t_amount,
+            tax_id=uuid.UUID(str(l["tax_id"])) if l.get("tax_id") else None,
+            tax_rate=rate, tax_amount=t_amount,
             account_id=uuid.UUID(str(l["account_id"])) if l.get("account_id") else None,
             created_by=actor_id, updated_by=actor_id))
     db.session.commit()
     return bill
 
 
+def _input_vat_account(entity_id):
+    """حساب ضريبة المدخلات 2141 — يُنشأ تلقائيًا كشقيق 2140 عند غيابه."""
+    from ..models.account import Account
+    acc = db.session.query(Account).filter_by(entity_id=entity_id, code="2141", is_deleted=False).first()
+    if acc is not None:
+        return acc
+    src = db.session.query(Account).filter_by(entity_id=entity_id, code="2140", is_deleted=False).first()
+    if src is None:
+        raise NotFoundError("Account 2140 not configured")
+    import uuid as _uuid
+    acc = Account(tenant_id=src.tenant_id, entity_id=src.entity_id, code="2141",
+                  name_ar="ضريبة مدخلات قابلة للاسترداد", name_en="VAT recoverable",
+                  parent_id=src.parent_id, level=src.level,
+                  path=(src.path or "").replace("2140", "2141"),
+                  is_leaf=True, account_type="asset", control_type="general",
+                  normal_balance="debit", is_postable=True,
+                  created_by=src.created_by, updated_by=src.created_by)
+    db.session.add(acc)
+    db.session.flush()
+    return acc
+
+
 def post_bill(bill_id: uuid.UUID, *, actor_id, journal_code: str = "PURCH") -> VendorBill:
-    """ترحيل الفاتورة: مخزون/مصروف مدين / مورد دائن."""
+    """ترحيل الفاتورة: صافي كل بند إلى حسابه (مخزون/مصروف) + ضريبة المدخلات مدينة
+    على 2141 + مورد دائن بالمجموع الكلي."""
     bill = db.session.get(VendorBill, bill_id)
     if bill is None or bill.is_deleted:
         raise NotFoundError("Bill not found")
@@ -98,20 +123,19 @@ def post_bill(bill_id: uuid.UUID, *, actor_id, journal_code: str = "PURCH") -> V
         raise NotFoundError(f"Journal {journal_code} not configured")
     supplier_acc = _account(bill.entity_id, "2010")
     stock_default = _account(bill.entity_id, "1310")
-    vat = _account(bill.entity_id, "2140")  # ضريبة المدخلات القابلة للاسترداد — مدينة (تخفّض صافي المستحق)
+    vat = _input_vat_account(bill.entity_id)  # ضريبة المدخلات القابلة للاسترداد — مدينة على 2141 (منفصلة عن 2140)
     fx = float(bill.exchange_rate or 1)
     lines = []
     for l in bill.lines:
         if l.is_deleted:
             continue
+        # صافي البند فقط (بدون الضريبة) إلى حساب البند — لا يُخصم من المخزون الافتراضي
         acc = l.account_id or stock_default.id
-        lines.append({"account_id": acc, "debit": float(l.line_total), "credit": 0,
+        net = float(l.line_total) - float(l.tax_amount or 0)
+        lines.append({"account_id": acc, "debit": net, "credit": 0,
                       "partner_id": bill.supplier_id})
     if float(bill.tax_total or 0) > 0:
-        # سطور البنود مسجلة بالصافي (line_total متضمن الضريبة) في المخزون أعلاه؛
-        # نعيد التصنيف: الضريبة مدينة على 2140 مقابل تخفيض المخزون/المصروف.
-        lines.append({"account_id": stock_default.id, "debit": 0, "credit": float(bill.tax_total),
-                      "partner_id": bill.supplier_id})
+        # ضريبة المدخلات مدينة على 2141 (قابلة للاسترداد) — منفصلة عن صافي البنود
         lines.append({"account_id": vat.id, "debit": float(bill.tax_total), "credit": 0,
                       "partner_id": bill.supplier_id})
     lines.append({"account_id": supplier_acc.id, "debit": 0, "credit": float(bill.grand_total),
@@ -198,11 +222,14 @@ def post_payment(payment_id: uuid.UUID, *, cash_account_id, actor_id,
 
 
 def allocate(*, payment_id, allocations: list[dict], actor_id) -> VendorPayment:
-    pay = db.session.get(VendorPayment, payment_id)
+    pay = db.session.get(VendorPayment, payment_id, with_for_update=True)
     if pay is None or pay.is_deleted:
         raise NotFoundError("Payment not found")
     if pay.status != "posted":
         raise BadStateError(f"Allocate requires posted payment (now {pay.status}) — post first")
+    for a in allocations:
+        if Decimal(str(a["allocated_amount"])) <= 0:
+            raise ValidationError("Allocated amount must be positive")
     total = sum(Decimal(str(a["allocated_amount"])) for a in allocations)
     if total > Decimal(str(pay.unallocated_amount)):
         raise ValidationError(f"Over-allocation: {total}")

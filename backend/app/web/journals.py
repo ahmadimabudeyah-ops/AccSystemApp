@@ -46,5 +46,7 @@ def detail(j_id):
 def edit(j_id):
     return render_template("journals/form.html", **h.ctx(
         "تعديل دفتر", [("المحاسبة", None), ("الدفاتر", url_for("web_journals.list")), ("تعديل", None)],
-        active="journals", action=url_for("web_journals.detail", j_id=j_id), fields=FIELDS,
+        active="journals", api_post=f"/api/v1/journals/{j_id}", method="PUT",
+        redirect_url="/journals", prefill=f"/api/v1/journals/{j_id}", fields=FIELDS,
+        submit="حفظ التعديلات",
         cancel_url=url_for("web_journals.detail", j_id=j_id)))

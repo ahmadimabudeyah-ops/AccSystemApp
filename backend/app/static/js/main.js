@@ -41,9 +41,31 @@
     });
   }
 
+  /* تخزين الجلسة: localStorage أولًا (يثبت عبر التبويبات) مع التوافق مع sessionStorage القديم */
+  window.__store = {
+    get(k) {
+      try { const v = localStorage.getItem(k); if (v !== null) return v; } catch (e) { /* ignore */ }
+      try { return sessionStorage.getItem(k); } catch (e) { return null; }
+    },
+    set(k, v) {
+      try { localStorage.setItem(k, v); } catch (e) { /* ignore */ }
+      try { sessionStorage.setItem(k, v); } catch (e) { /* ignore */ }
+    },
+    del(k) {
+      try { localStorage.removeItem(k); } catch (e) { /* ignore */ }
+      try { sessionStorage.removeItem(k); } catch (e) { /* ignore */ }
+    },
+  };
+  try {
+    ["access_token", "refresh_token", "tenant_id", "entity_id"].forEach((k) => {
+      const s = sessionStorage.getItem(k);
+      if (s !== null && localStorage.getItem(k) === null) localStorage.setItem(k, s);
+    });
+  } catch (e) { /* ignore */ }
+
   window.apiHeaders = function () {
-    const token = sessionStorage.getItem("access_token");
-    const tenant = sessionStorage.getItem("tenant_id");
+    const token = window.__store.get("access_token");
+    const tenant = window.__store.get("tenant_id");
     const h = { "Content-Type": "application/json" };
     if (token) h.Authorization = "Bearer " + token;
     if (tenant) h["X-Tenant-ID"] = tenant;

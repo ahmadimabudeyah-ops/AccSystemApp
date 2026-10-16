@@ -127,14 +127,49 @@ def approve(count_id, *, actor_id) -> StockCount:
     return c
 
 
+def _adjust_account(entity_id):
+    """حساب فروقات الجرد 5590 — يُنشأ تلقائيًا كشقيق 5010 عند غيابه."""
+    from ..models.account import Account
+    acc = db.session.query(Account).filter_by(
+        entity_id=uuid.UUID(str(entity_id)), code="5590", is_deleted=False).first()
+    if acc is not None:
+        return acc
+    src = db.session.query(Account).filter_by(
+        entity_id=uuid.UUID(str(entity_id)), code="5010", is_deleted=False).first()
+    if src is None:
+        raise NotFoundError("Account 5010 not configured")
+    acc = Account(tenant_id=src.tenant_id, entity_id=src.entity_id, code="5590",
+                  name_ar="فروقات الجرد", name_en="Inventory adjustments",
+                  parent_id=src.parent_id, level=src.level,
+                  path=(src.path or "").replace("5010", "5590"),
+                  is_leaf=True, account_type="expense", control_type="general",
+                  normal_balance="debit", is_postable=True,
+                  created_by=src.created_by, updated_by=src.created_by)
+    db.session.add(acc)
+    db.session.flush()
+    return acc
+
+
 def apply(count_id, *, actor_id) -> dict:
-    """ترحيل الفروقات: حركة تسوية مرحّلة لكل فرق غير صفري + تحديث الأرصدة."""
+    """ترحيل الفروقات: حركة تسوية مرحّلة لكل فرق غير صفري + تحديث الأرصدة + قيد مالي.
+
+    القيد: العجز مدين 5590 / دائن 1310، والفائض مدين 1310 / دائن 5590 — بمتوسط التكلفة.
+    """
+    from ..models.account import Account as _Account
+    from ..models.journal import Journal as _Journal
     c = _get_count(count_id)
     if c.status != "approved":
         raise BadStateError(f"Cannot apply from {c.status} — approve first")
     lines = db.session.query(StockCountLine).filter_by(
         count_id=c.id, is_deleted=False).order_by(StockCountLine.line_number).all()
+    stock_acc = db.session.query(_Account).filter_by(
+        entity_id=c.entity_id, code="1310", is_deleted=False).first()
+    if stock_acc is None:
+        raise NotFoundError("Account 1310 not configured")
+    adjust_acc = _adjust_account(c.entity_id)
     created = 0
+    shortage = Decimal("0")
+    surplus = Decimal("0")
     for l in lines:
         diff = round(float(l.counted_qty or 0) - float(l.system_qty or 0), 6)
         if abs(diff) < 0.0000005:
@@ -168,12 +203,42 @@ def apply(count_id, *, actor_id) -> dict:
             product.avg_cost = round(
                 (float(product.avg_cost or 0) * q_total_before
                  + float(l.unit_cost) * diff) / float(q.qty), 3)
+        val = (Decimal(str(abs(diff))) * Decimal(str(l.unit_cost or 0))).quantize(Decimal("0.001"))
+        if diff < 0:
+            shortage += val
+        else:
+            surplus += val
         created += 1
+    entry_id = None
+    if shortage > 0 or surplus > 0:
+        from . import posting_service
+        journal = db.session.query(_Journal).filter_by(
+            tenant_id=c.tenant_id, entity_id=c.entity_id, code="GEN", is_deleted=False).first()
+        if journal is None:
+            raise NotFoundError("Journal GEN not configured")
+        gl = []
+        if shortage > 0:
+            gl.append({"account_id": adjust_acc.id, "debit": float(shortage), "credit": 0})
+            gl.append({"account_id": stock_acc.id, "debit": 0, "credit": float(shortage)})
+        if surplus > 0:
+            gl.append({"account_id": stock_acc.id, "debit": float(surplus), "credit": 0})
+            gl.append({"account_id": adjust_acc.id, "debit": 0, "credit": float(surplus)})
+        entry = posting_service.create_entry(
+            {"tenant_id": c.tenant_id, "entity_id": c.entity_id, "journal_id": journal.id,
+             "entry_type": "source", "document_date": c.count_date, "posting_date": c.count_date,
+             "description": f"فروقات جرد {c.doc_number}", "source_module": "inventory",
+             "source_document_id": c.id, "source_event_key": f"inventory.count.{c.id}.v1",
+             "currency_id": "JOD", "exchange_rate": 1},
+            gl, actor_id=actor_id)
+        entry = posting_service.post_entry(entry.id, actor_id)
+        entry_id = str(entry.id)
     c.status = "posted"
     c.updated_by = actor_id
     db.session.commit()
     log.info("count %s applied: %s adjustment moves", c.doc_number, created)
-    return {"count_id": str(c.id), "status": c.status, "adjustment_moves": created}
+    return {"count_id": str(c.id), "status": c.status, "adjustment_moves": created,
+            "shortage_value": float(shortage), "surplus_value": float(surplus),
+            "entry_id": entry_id}
 
 
 def diff_report(count_id) -> list[dict]:

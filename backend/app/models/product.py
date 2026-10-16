@@ -84,6 +84,7 @@ class StockMove(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, VersionM
     reference: Mapped[str | None] = mapped_column(String(100))
     move_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     unit_cost: Mapped[float] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("journal_entries.id", ondelete="RESTRICT"))
 
 
 class StockCount(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, VersionMixin, SoftDeleteLite):

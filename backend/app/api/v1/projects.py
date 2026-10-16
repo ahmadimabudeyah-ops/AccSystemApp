@@ -1,6 +1,8 @@
 """Projects/budgets, audit trail, dimensions, fiscal periods APIs."""
 from __future__ import annotations
 import uuid
+from datetime import date
+from decimal import Decimal
 from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy import text as _text
@@ -85,7 +87,7 @@ def add_cost(pid):
     if denied:
         return denied
     p = db.session.get(Project, pid)
-    if p is None or p.is_deleted:
+    if p is None or p.is_deleted or str(p.tenant_id) != str(g.tenant_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     data = request.get_json(force=True)
     me = uuid.UUID(str(get_jwt().get("sub")))
@@ -107,7 +109,7 @@ def add_revenue(pid):
     if denied:
         return denied
     p = db.session.get(Project, pid)
-    if p is None or p.is_deleted:
+    if p is None or p.is_deleted or str(p.tenant_id) != str(g.tenant_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     data = request.get_json(force=True)
     me = uuid.UUID(str(get_jwt().get("sub")))
@@ -168,7 +170,7 @@ def budget_variance(bid):
             "SELECT COALESCE(SUM(l.debit - l.credit),0)::float FROM journal_lines l "
             "JOIN journal_entries e ON e.id = l.entry_id "
             "JOIN fiscal_periods p ON p.id = e.fiscal_period_id "
-            "WHERE l.account_id = :a AND p.fiscal_year_id = :y AND e.status = 'posted' "
+            "WHERE l.account_id = :a AND p.fiscal_year_id = :y AND e.status IN ('posted','reversed') "
             "AND e.is_deleted = FALSE AND l.is_deleted = FALSE"),
             {"a": line.account_id, "y": b.fiscal_year_id}).scalar() or 0.0
         planned = float(line.planned_amount)
@@ -345,3 +347,285 @@ def tax_summary():
         "WHERE t.tenant_id = :t AND i.status = 'posted' AND t.is_deleted = FALSE"),
         {"t": str(g.tenant_id)}).scalar() or 0.0
     return jsonify({"data": {"vat_collected_posted": round(vat, 3)}})
+
+
+# ------------------------------------------------------------- project phases & tasks
+
+@bp.get("/project-phases")
+@jwt_required()
+def list_phases():
+    from ...models.addons import ProjectPhase
+    q = db.session.query(ProjectPhase).filter_by(is_deleted=False)
+    if request.args.get("project_id"):
+        q = q.filter_by(project_id=uuid.UUID(request.args["project_id"]))
+    rows = q.order_by(ProjectPhase.code).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(p.id), "project_id": str(p.project_id),
+                              "code": p.code, "name_ar": p.name_ar,
+                              "starts_on": p.starts_on.isoformat() if p.starts_on else None,
+                              "ends_on": p.ends_on.isoformat() if p.ends_on else None,
+                              "status": p.status} for p in rows]})
+
+
+@bp.post("/project-phases")
+@jwt_required()
+def create_phase():
+    denied = _deny("projects.manage")
+    if denied:
+        return denied
+    from ...models.addons import ProjectPhase
+    data = request.get_json(force=True)
+    p = ProjectPhase(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        project_id=uuid.UUID(str(data["project_id"])),
+        code=data["code"], name_ar=data["name_ar"],
+        starts_on=date.fromisoformat(data["starts_on"]) if data.get("starts_on") else None,
+        ends_on=date.fromisoformat(data["ends_on"]) if data.get("ends_on") else None,
+        status="planned",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(p)
+    db.session.commit()
+    return jsonify({"data": {"id": str(p.id), "code": p.code}}), 201
+
+
+@bp.get("/project-tasks")
+@jwt_required()
+def list_tasks():
+    from ...models.addons import ProjectTask
+    q = db.session.query(ProjectTask).filter_by(is_deleted=False)
+    if request.args.get("phase_id"):
+        q = q.filter_by(phase_id=uuid.UUID(request.args["phase_id"]))
+    rows = q.order_by(ProjectTask.code).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(t.id), "phase_id": str(t.phase_id),
+                              "code": t.code, "name_ar": t.name_ar,
+                              "planned_cost": float(t.planned_cost),
+                              "progress_pct": float(t.progress_pct),
+                              "status": t.status} for t in rows]})
+
+
+@bp.post("/project-tasks")
+@jwt_required()
+def create_task():
+    denied = _deny("projects.manage")
+    if denied:
+        return denied
+    from ...models.addons import ProjectTask
+    data = request.get_json(force=True)
+    t = ProjectTask(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        phase_id=uuid.UUID(str(data["phase_id"])),
+        code=data["code"], name_ar=data["name_ar"],
+        planned_cost=data.get("planned_cost", 0),
+        status="planned",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({"data": {"id": str(t.id), "code": t.code}}), 201
+
+
+@bp.patch("/project-tasks/<uuid:task_id>")
+@jwt_required()
+def update_task(task_id):
+    denied = _deny("projects.manage")
+    if denied:
+        return denied
+    from ...models.addons import ProjectTask
+    t = db.session.get(ProjectTask, task_id)
+    if t is None or t.is_deleted:
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    data = request.get_json(force=True)
+    if "progress_pct" in data:
+        t.progress_pct = data["progress_pct"]
+        if float(t.progress_pct) >= 100:
+            t.status = "done"
+    if "status" in data:
+        t.status = data["status"]
+    db.session.commit()
+    return jsonify({"data": {"id": str(t.id), "status": t.status,
+                             "progress_pct": float(t.progress_pct)}})
+
+
+# ------------------------------------------------------------- budget versions & transfers
+
+@bp.get("/budgets/<uuid:budget_id>/versions")
+@jwt_required()
+def list_budget_versions(budget_id):
+    from ...models.addons import BudgetVersion
+    rows = db.session.query(BudgetVersion).filter_by(
+        budget_id=budget_id, is_deleted=False
+    ).order_by(BudgetVersion.version_no.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(v.id), "version_no": v.version_no,
+                              "notes": v.notes, "status": v.status} for v in rows]})
+
+
+@bp.post("/budgets/<uuid:budget_id>/versions")
+@jwt_required()
+def create_budget_version(budget_id):
+    denied = _deny("budget.manage")
+    if denied:
+        return denied
+    from ...models.addons import BudgetVersion
+    from ...models.project import Budget
+    b = db.session.get(Budget, budget_id)
+    if b is None or b.is_deleted or str(b.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    last = db.session.query(BudgetVersion).filter_by(
+        budget_id=budget_id, is_deleted=False).order_by(
+        BudgetVersion.version_no.desc()).first()
+    next_no = (last.version_no + 1) if last else 1
+    data = request.get_json(force=True, silent=True) or {}
+    v = BudgetVersion(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        budget_id=budget_id, version_no=next_no,
+        notes=data.get("notes"), status="draft",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(v)
+    db.session.commit()
+    return jsonify({"data": {"id": str(v.id), "version_no": v.version_no}}), 201
+
+
+@bp.get("/budget-transfers")
+@jwt_required()
+def list_budget_transfers():
+    from ...models.addons import BudgetTransfer
+    rows = db.session.query(BudgetTransfer).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(BudgetTransfer.created_at.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(bt.id), "budget_id": str(bt.budget_id),
+                              "amount": float(bt.amount),
+                              "reason": bt.reason, "status": bt.status} for bt in rows]})
+
+
+@bp.post("/budget-transfers")
+@jwt_required()
+def create_budget_transfer():
+    denied = _deny("budget.manage")
+    if denied:
+        return denied
+    from ...models.addons import BudgetTransfer
+    data = request.get_json(force=True)
+    bt = BudgetTransfer(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        budget_id=uuid.UUID(str(data["budget_id"])),
+        from_account_id=uuid.UUID(str(data["from_account_id"])),
+        to_account_id=uuid.UUID(str(data["to_account_id"])),
+        amount=data["amount"], reason=data.get("reason"), status="draft",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(bt)
+    db.session.commit()
+    return jsonify({"data": {"id": str(bt.id)}}), 201
+
+
+@bp.post("/budget-transfers/<uuid:bt_id>/approve")
+@jwt_required()
+def approve_budget_transfer(bt_id):
+    denied = _deny("budget.manage")
+    if denied:
+        return denied
+    from ...models.addons import BudgetTransfer
+    from ...models.project import BudgetLine
+    bt = db.session.get(BudgetTransfer, bt_id)
+    if bt is None or bt.is_deleted:
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    if bt.status == "approved":
+        return jsonify({"data": {"id": str(bt.id), "status": bt.status}})
+    if bt.status != "draft":
+        return jsonify({"error": {"code": "BAD_STATE",
+                                  "message": f"Cannot approve from {bt.status}"}}), 409
+    fl = db.session.query(BudgetLine).filter_by(
+        budget_id=bt.budget_id, account_id=bt.from_account_id,
+        is_deleted=False).first()
+    tl = db.session.query(BudgetLine).filter_by(
+        budget_id=bt.budget_id, account_id=bt.to_account_id,
+        is_deleted=False).first()
+    if fl is None or tl is None:
+        return jsonify({"error": {"code": "VALIDATION",
+                                  "message": "budget lines missing"}}), 422
+    amt = Decimal(str(bt.amount))
+    if Decimal(str(fl.amount)) < amt:
+        return jsonify({"error": {"code": "VALIDATION",
+                                  "message": "insufficient budget"}}), 422
+    fl.amount = float(Decimal(str(fl.amount)) - amt)
+    tl.amount = float(Decimal(str(tl.amount)) + amt)
+    bt.status = "approved"
+    db.session.commit()
+    return jsonify({"data": {"id": str(bt.id), "status": bt.status}})
+
+
+# ------------------------------------------------------------- forecasts
+
+@bp.get("/forecasts")
+@jwt_required()
+def list_forecasts():
+    from ...models.addons import Forecast
+    rows = db.session.query(Forecast).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(Forecast.created_at.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(f.id), "code": f.code,
+                              "name_ar": f.name_ar, "year": f.year,
+                              "status": f.status} for f in rows]})
+
+
+@bp.post("/forecasts")
+@jwt_required()
+def create_forecast():
+    denied = _deny("budget.manage")
+    if denied:
+        return denied
+    from ...models.addons import Forecast, ForecastLine
+    data = request.get_json(force=True)
+    f = Forecast(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=uuid.UUID(str(data["entity_id"])),
+        code=data["code"], name_ar=data["name_ar"],
+        year=data["year"], status="draft",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(f)
+    db.session.flush()
+    for l in data.get("lines", []):
+        db.session.add(ForecastLine(
+            tenant_id=g.tenant_id, forecast_id=f.id,
+            account_id=uuid.UUID(str(l["account_id"])),
+            month=date.fromisoformat(l["month"]), amount=l["amount"],
+            created_by=uuid.UUID(str(get_jwt().get("sub"))),
+            updated_by=uuid.UUID(str(get_jwt().get("sub")))))
+    db.session.commit()
+    return jsonify({"data": {"id": str(f.id), "code": f.code}}), 201
+
+
+@bp.get("/forecasts/<uuid:fid>")
+@jwt_required()
+def get_forecast(fid):
+    from ...models.addons import Forecast
+    f = db.session.get(Forecast, fid)
+    if f is None or f.is_deleted or str(f.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    return jsonify({"data": {"id": str(f.id), "code": f.code,
+                             "name_ar": f.name_ar, "year": f.year,
+                             "status": f.status,
+                             "lines": [{"month": l.month.isoformat(),
+                                        "account_id": str(l.account_id),
+                                        "amount": float(l.amount)}
+                                       for l in f.lines if not l.is_deleted]}})
+
+
+@bp.post("/forecasts/<uuid:fid>/confirm")
+@jwt_required()
+def confirm_forecast(fid):
+    denied = _deny("budget.manage")
+    if denied:
+        return denied
+    from ...models.addons import Forecast
+    f = db.session.get(Forecast, fid)
+    if f is None or f.is_deleted:
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    if f.status != "draft":
+        return jsonify({"error": {"code": "BAD_STATE",
+                                  "message": f"Cannot confirm from {f.status}"}}), 409
+    f.status = "confirmed"
+    db.session.commit()
+    return jsonify({"data": {"id": str(f.id), "status": f.status}})

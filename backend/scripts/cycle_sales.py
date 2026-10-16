@@ -1,12 +1,13 @@
-"""Sales + purchases cycle: invoice -> post -> payment -> allocate (+ vendor mirror)."""
+﻿"""Sales + purchases cycle: invoice -> post -> payment -> allocate (+ vendor mirror)."""
 import json
 import sys
 import urllib.request
 import urllib.error
 
-BASE = "http://127.0.0.1:5000"
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
-EID = "f50db4a1-9381-400d-954b-79c515667f74"
+import os as _os
+BASE = "http://127.0.0.1:" + _os.getenv("BASE_PORT", "5000")
+from _ids import TID, EID  # noqa: E402
+
 
 
 def call(method, path, token=None, body=None):
@@ -65,6 +66,9 @@ s, pay = call("POST", "/api/v1/sales/payments", checker, {
     "pay_method": "cash"})
 assert s == 201, pay
 pid = pay["data"]["id"]
+s, payp = call("POST", f"/api/v1/sales/payments/{pid}/post", admin, {"cash_account_id": cash_acc})
+assert s == 200 and payp["data"]["status"] == "posted", payp
+print("PAY_POST_OK")
 s, allo = call("POST", f"/api/v1/sales/payments/{pid}/allocate", checker, {
     "allocations": [{"invoice_id": iid, "allocated_amount": 232}]})
 assert s == 200 and allo["data"]["unallocated_amount"] == 0, allo
@@ -90,24 +94,56 @@ print("BILL_POST_OK")
 s, vpay = call("POST", "/api/v1/purchases/payments", checker, {
     "entity_id": EID, "supplier_id": supp, "amount": 300})
 assert s == 201, vpay
+s, vpayp = call("POST", f"/api/v1/purchases/payments/{vpay['data']['id']}/post", admin, {"cash_account_id": cash_acc})
+assert s == 200 and vpayp["data"]["status"] == "posted", vpayp
 s, vallo = call("POST", f"/api/v1/purchases/payments/{vpay['data']['id']}/allocate", checker, {
     "allocations": [{"bill_id": bid, "allocated_amount": 300}]})
 assert s == 200, vallo
 print("VPAY_ALLOCATE_OK")
 
 # ---- credit note + return ----
+# Use a FRESH invoice that still owes money: crediting a fully-paid invoice is
+# rejected by post_credit_note (that guard keeps AR subledger == GL), and the
+# return below credits the same invoice again.
+s, open_inv = call("POST", "/api/v1/sales/invoices", checker, {
+    "entity_id": EID, "customer_id": cust, "payment_term_days": 30,
+    "lines": [{"product_id": prod, "qty": 5, "unit_price": 100, "tax_id": vat}]})
+assert s == 201, open_inv
+oid_inv = open_inv["data"]["id"]
+s, oinvp = call("POST", f"/api/v1/sales/invoices/{oid_inv}/post", admin)
+assert s == 200 and oinvp["data"]["status"] == "posted", oinvp
+open_iid = str(oid_inv)
+
 s, cn = call("POST", "/api/v1/sales/credit-notes", checker, {
-    "entity_id": EID, "customer_id": cust, "invoice_id": iid,
+    "entity_id": EID, "customer_id": cust, "invoice_id": open_iid,
     "reason": "discount after sale",
     "lines": [{"product_id": prod, "qty": 1, "unit_price": 16}]})
 assert s == 201, cn
 s, cnp = call("POST", f"/api/v1/sales/credit-notes/{cn['data']['id']}/post", admin)
 assert s == 200 and cnp["data"]["status"] == "posted", cnp
 print("CREDIT_OK")
+# the invoice must now show the credit against its remaining balance
+s, inv_after = call("GET", f"/api/v1/sales/invoices/{open_iid}", admin)
+assert s == 200 and inv_after["data"]["remaining_amount"] > 0, inv_after
+print("CREDIT_REDUCES_REMAINING_OK remaining=", inv_after["data"]["remaining_amount"])
+
+# over-crediting the same invoice must be refused, not silently allowed
+s, dup_cn = call("POST", "/api/v1/sales/credit-notes", checker, {
+    "entity_id": EID, "customer_id": cust, "invoice_id": open_iid,
+    "reason": "cannot credit more than owed",
+    "lines": [{"product_id": prod, "qty": 999, "unit_price": 100}]})
+if s == 201:
+    s2, r2 = call("POST", f"/api/v1/sales/credit-notes/{dup_cn['data']['id']}/post", admin)
+    assert s2 == 422 and r2["error"]["code"] in (
+        "VALIDATION_ERROR", "BAD_STATE"), r2
+    print("OVER_CREDIT_REFUSED_OK")
+else:
+    print("OVER_CREDIT_REFUSED_AT_CREATE_OK", str(s))
+
 s, wh = call("GET", "/api/v1/warehouses", admin)
 s, loc = call("GET", f"/api/v1/warehouses/{wh['data'][0]['id']}/locations", admin)
 s, ret = call("POST", "/api/v1/sales/returns", checker, {
-    "entity_id": EID, "customer_id": cust, "invoice_id": iid,
+    "entity_id": EID, "customer_id": cust, "invoice_id": open_iid,
     "reason": "damaged item", "warehouse_id": wh["data"][0]["id"],
     "lines": [{"product_id": prod, "returned_qty": 1, "unit_price": 100}]})
 assert s == 201, ret

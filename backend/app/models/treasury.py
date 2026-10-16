@@ -85,6 +85,8 @@ class Check(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, VersionMixin
     issue_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     due_on: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="issued", nullable=False)
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("journal_entries.id", ondelete="RESTRICT"))
+    reversal_entry_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("journal_entries.id", ondelete="RESTRICT"))
 
 
 class Transfer(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, VersionMixin, SoftDeleteMixin):
@@ -99,6 +101,7 @@ class Transfer(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, VersionMi
     amount: Mapped[float] = mapped_column(Numeric(18, 3), nullable=False)
     currency_id: Mapped[str] = mapped_column(String(3), default="JOD", nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="posted", nullable=False)
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("journal_entries.id", ondelete="RESTRICT"))
 
 
 class DocSequence(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, VersionMixin, SoftDeleteMixin):

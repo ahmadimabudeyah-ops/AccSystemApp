@@ -50,6 +50,10 @@ def list_moves():
         tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False)
     if request.args.get("product_id"):
         q = q.filter_by(product_id=uuid.UUID(str(request.args["product_id"])))
+    if request.args.get("move_type"):
+        q = q.filter_by(move_type=request.args["move_type"])
+    if request.args.get("status"):
+        q = q.filter_by(status=request.args["status"])
     rows = q.order_by(StockMove.move_date.desc()).limit(50).offset((page - 1) * 50).all()
     out = []
     for m in rows:
@@ -124,11 +128,14 @@ def done_move(move_id):
             db.session.add(q)
             db.session.flush()
         if float(q.qty) + delta < -0.000001:
-            from ...services.errors import ValidationError
-            raise ValidationError("Insufficient stock (negative not allowed)")
+            return "INSUFFICIENT_STOCK"
         q.qty = float(q.qty) + delta
 
-    bump(m.source_location_id, -float(m.qty))
+    err2 = bump(m.source_location_id, -float(m.qty))
+    if err2:
+        db.session.rollback()
+        return jsonify({"error": {"code": err2,
+                                  "message": "Insufficient stock"}}), 422
     bump(m.dest_location_id, float(m.qty))
     # تحديث متوسط التكلفة عند الاستلام بسعر
     if m.move_type == "receipt" and float(m.unit_cost or 0) > 0:
@@ -139,8 +146,77 @@ def done_move(move_id):
             p.avg_cost = round((float(p.avg_cost) * (on_hand - float(m.qty)) + float(m.unit_cost) * float(m.qty)) / on_hand, 3)
     m.status = "done"
     m.updated_by = uuid.UUID(str(get_jwt().get("sub")))
+    # قيد GL للحركات اليدوية: تسليم → كلفة مبيعات؛ تسوية → 5590
+    _post_move_gl(m, actor_id=m.updated_by)
     db.session.commit()
     return jsonify({"data": {"id": str(m.id), "status": "done"}})
+
+
+def _post_move_gl(m, *, actor_id):
+    """ترحيل قيد محاسبي للحركة اليدوية المكتملة.
+
+    - delivery: مصروف كلفة مدين / مخزون دائن (بمتوسط التكلفة)
+    - adjustment (in): مخزون مدين / تسوية مخزون دائن
+    - adjustment (out): تسوية مخزون مدين / مخزون دائن
+    - receipt: لا قيد تلقائي (يجب أن يمر عبر فاتورة شراء أو قيد يدوي بحساب مقابل)
+    """
+    from ...models.journal import Journal
+    from ...models.account import Account
+    from ...services import posting_service as _ps
+    from ...models.product import Product as _Prod
+    if m.move_type == "internal":
+        return  # تحويل داخلي بلا أثر مالي
+    product = db.session.get(_Prod, m.product_id)
+    if product is None or product.product_type != "stockable":
+        return
+    cost = round(float(m.qty) * float(product.avg_cost or 0), 3)
+    if cost <= 0 and m.move_type != "adjustment":
+        return
+    journal = db.session.query(Journal).filter_by(
+        tenant_id=m.tenant_id, entity_id=m.entity_id, code="GEN", is_deleted=False).first()
+    if journal is None:
+        return
+    stock_acc = db.session.query(Account).filter_by(
+        entity_id=m.entity_id, code="1310", is_deleted=False).first()
+    if stock_acc is None:
+        return
+    if m.move_type == "delivery":
+        cogs_acc = db.session.query(Account).filter_by(
+            entity_id=m.entity_id, code="5010", is_deleted=False).first()
+        if cogs_acc is None or cost <= 0:
+            return
+        lines = [{"account_id": cogs_acc.id, "debit": cost, "credit": 0},
+                 {"account_id": stock_acc.id, "debit": 0, "credit": cost}]
+        desc = f"كلفة تسليم مخزني {m.reference or m.id}"
+    elif m.move_type == "adjustment":
+        adj_acc = db.session.query(Account).filter_by(
+            entity_id=m.entity_id, code="5590", is_deleted=False).first()
+        if adj_acc is None:
+            return
+        # تحديد الاتجاه: إن وُجد dest → زيادة مخزون (مدين مخزون)؛ إن وُجد source → نقصان
+        if m.dest_location_id and not m.source_location_id:
+            lines = [{"account_id": stock_acc.id, "debit": cost, "credit": 0},
+                     {"account_id": adj_acc.id, "debit": 0, "credit": cost}]
+            desc = f"تسوية مخزون — زيادة {m.reference or m.id}"
+        else:
+            lines = [{"account_id": adj_acc.id, "debit": cost, "credit": 0},
+                     {"account_id": stock_acc.id, "debit": 0, "credit": cost}]
+            desc = f"تسوية مخزون — نقصان {m.reference or m.id}"
+    else:
+        return  # receipt: لا قيد تلقائي
+    try:
+        entry = _ps.create_entry(
+            {"tenant_id": m.tenant_id, "entity_id": m.entity_id, "journal_id": journal.id,
+             "entry_type": "source", "document_date": m.move_date, "posting_date": m.move_date,
+             "description": desc, "source_module": "inventory",
+             "source_event_key": f"inventory.move.{m.id}.gl.v1"},
+            lines, actor_id=actor_id)
+        _ps.post_entry(entry.id, actor_id)
+        m.journal_entry_id = entry.id
+    except Exception:
+        # لا نفشل الحركة المخزنية بسبب خطأ قيد — يُسجَّل ويُترك للمراجعة
+        import logging
+        logging.getLogger(__name__).warning("inventory move %s GL posting failed", m.id, exc_info=True)
 
 
 @bp.get("/quants")

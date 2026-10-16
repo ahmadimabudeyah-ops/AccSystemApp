@@ -13,8 +13,8 @@ ALL = [p.code for p in []]  # filled below from catalog
 
 MATRIX = {
     # role: permissions (* = all catalog)
-    "TENANT_OWNER": ["*"],
-    "TENANT_ADMIN": ["*"],
+    "TENANT_OWNER": ["*", "admin.*"],
+    "TENANT_ADMIN": ["*", "admin.*"],
     "FINANCE_MANAGER": ["entities.view", "branches.manage", "journals.post", "journals.reverse",
                         "journals.approve", "journals.create", "accounts.create", "accounts.update",
                         "reports.view", "export.data", "period.close", "sales.manage", "sales.view",
@@ -62,8 +62,8 @@ def main():
                 db.session.add(role)
                 db.session.flush()
             want = MATRIX[code]
-            if want == ["*"]:
-                want = list(catalog.keys())
+            if "*" in want:
+                want = sorted(set(catalog.keys()) | (set(want) - {"*"}))
             have = {rp.permission_id for rp in
                     db.session.query(RolePermission).filter_by(role_id=role.id).all()}
             for perm_code in want:

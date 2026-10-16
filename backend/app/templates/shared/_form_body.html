@@ -1,7 +1,7 @@
 {# جسم نموذج عام: page = {title, action, method, fields:[{name,label,type,required,options,value,ltr}], submit, cancel_url, item} #}
 <h1 class="mb-3">{{ page.title }}</h1>
 <div class="card">
-  <form {% if page.api_post %}data-api-post="{{ page.api_post }}" data-redirect="{{ page.redirect_url or '' }}"{% if page.single_line %} data-single-line{% endif %}{% if page.method %} data-method="{{ page.method }}"{% endif %}{% if page.prefill %} data-prefill="{{ page.prefill }}"{% endif %} novalidate{% else %}method="post" action="{{ page.action }}"{% endif %}>
+  <form {% if page.api_post %}data-api-post="{{ page.api_post }}" data-redirect="{{ page.redirect_url or '' }}"{% if page.single_line %} data-single-line{% endif %}{% if page.method %} data-method="{{ page.method }}"{% endif %}{% if page.prefill %} data-prefill="{{ page.prefill }}"{% endif %}{% if page.no_append %} data-append-id="0"{% endif %}{% if page.redirect_field %} data-redirect-field="{{ page.redirect_field }}"{% endif %} novalidate{% else %}method="post" action="{{ page.action }}"{% endif %}>
     <div class="row g-3">
       {% for f in page.fields %}
         <div class="col-md-{{ f.width or 6 }}">

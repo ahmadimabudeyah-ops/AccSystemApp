@@ -5,6 +5,7 @@ import logging
 import secrets
 import uuid
 from datetime import date, timedelta
+from decimal import Decimal
 from sqlalchemy import text as _text
 from ..extensions import db
 from ..models.ops import (
@@ -71,6 +72,27 @@ def post_vendor_return(return_id: uuid.UUID, *, actor_id, stock_account_code="13
         raise NotFoundError("Journal PURCH not configured")
     stock_acc = _account(ret.entity_id, stock_account_code)
     supplier_acc = _account(ret.entity_id, "2010")
+    if ret.warehouse_id:
+        missing = [l.line_number for l in ret.lines
+                   if not l.is_deleted and l.location_id is None]
+        if missing:
+            raise ValidationError(f"Return lines need locations: {missing[:10]}")
+    # ضريبة المدخلات المعكوسة: نسبة من الفاتورة الأصلية المرتبطة (إن وجدت)
+    vat_ratio = Decimal("0")
+    if ret.bill_id:
+        from ..models.purchases import VendorBill as _Bill
+        bill = db.session.get(_Bill, ret.bill_id)
+        if bill is not None and not bill.is_deleted and float(bill.grand_total or 0) > 0:
+            vat_ratio = Decimal(str(bill.tax_total or 0)) / Decimal(str(bill.grand_total))
+    vat_part = (Decimal(str(ret.total_amount)) * vat_ratio).quantize(Decimal("0.001"))
+    net_part = Decimal(str(ret.total_amount)) - vat_part
+    try:
+        input_vat = _account(ret.entity_id, "2141")
+    except NotFoundError:
+        input_vat = None
+    if input_vat is None or vat_part <= 0:
+        vat_part = Decimal("0")
+        net_part = Decimal(str(ret.total_amount))
     for l in ret.lines:
         if l.is_deleted or l.location_id is None:
             continue
@@ -87,18 +109,41 @@ def post_vendor_return(return_id: uuid.UUID, *, actor_id, stock_account_code="13
         if q is None or float(q.qty) - float(q.reserved_qty) < float(l.returned_qty) - 0.001:
             raise ValidationError("Insufficient stock for vendor return")
         q.qty = float(q.qty) - float(l.returned_qty)
+    # حساب متوسط التكلفة الإجمالي للمرتجع (مطابق للـ StockMove)
+    avg_cost_total = Decimal("0")
+    for l in ret.lines:
+        if l.is_deleted:
+            continue
+        product = db.session.get(Product, l.product_id)
+        avg_cost_total += Decimal(str(l.returned_qty)) * Decimal(str(product.avg_cost or 0))
+    avg_cost_total = avg_cost_total.quantize(Decimal("0.001"))
+    # فرق التكلفة: الفرق بين صافي الفاتورة ومتوسط التكلفة يذهب لتسوية المخزون
+    cost_diff = (net_part - avg_cost_total).quantize(Decimal("0.001"))
+    gl_lines = [{"account_id": supplier_acc.id, "debit": float(ret.total_amount), "credit": 0,
+                 "partner_id": ret.supplier_id},
+                {"account_id": stock_acc.id, "debit": 0, "credit": float(avg_cost_total),
+                 "partner_id": ret.supplier_id}]
+    if vat_part > 0:
+        gl_lines.append({"account_id": input_vat.id, "debit": 0, "credit": float(vat_part),
+                         "partner_id": ret.supplier_id})
+    if abs(cost_diff) >= Decimal("0.001"):
+        adj_acc = _account(ret.entity_id, "5590")
+        if cost_diff > 0:
+            # صافي الفاتورة > متوسط التكلفة → ربح على المردود (دائن)
+            gl_lines.append({"account_id": adj_acc.id, "debit": 0, "credit": float(cost_diff)})
+        else:
+            # صافي الفاتورة < متوسط التكلفة → خسارة على المردود (مدين)
+            gl_lines.append({"account_id": adj_acc.id, "debit": float(-cost_diff), "credit": 0})
     entry = posting_service.create_entry(
         {"tenant_id": ret.tenant_id, "entity_id": ret.entity_id, "journal_id": journal.id,
          "entry_type": "source", "document_date": ret.return_date, "posting_date": ret.return_date,
          "description": f"مرتجع مورد {ret.doc_number}", "source_module": "purchases",
          "source_document_id": ret.id, "source_event_key": f"purchases.vreturn.{ret.id}.v1"},
-        [{"account_id": supplier_acc.id, "debit": float(ret.total_amount), "credit": 0,
-          "partner_id": ret.supplier_id},
-         {"account_id": stock_acc.id, "debit": 0, "credit": float(ret.total_amount),
-          "partner_id": ret.supplier_id}],
+        gl_lines,
         actor_id=actor_id)
     entry = posting_service.post_entry(entry.id, actor_id)
     ret.journal_entry_id = entry.id
+    ret.vat_amount = float(vat_part)
     ret.status = "posted"
     db.session.commit()
     return ret
@@ -107,7 +152,11 @@ def post_vendor_return(return_id: uuid.UUID, *, actor_id, stock_account_code="13
 # ------------------------------------------------------------- tax filing
 
 def file_tax_return(*, tenant_id, entity_id, tax_id, period_code, actor_id):
-    """احتساب الإقرار من ضرائب فواتير الفترة + حفظه كمسودة قابلة للتقديم."""
+    """احتساب الإقرار: مخرجات (فواتير − إشعارات دائنة) − مدخلات (فواتير موردين − مرتجعات).
+
+    يُقيّد بالكيان والشهر المحاسبي (تاريخ المستند). tax_due تُحفظ للتوافق = المخرجات،
+    وصافي المستحق في net_due = المخرجات − المدخلات.
+    """
     from ..models.treasury import Tax
     tax = db.session.get(Tax, uuid.UUID(str(tax_id)))
     if tax is None:
@@ -118,17 +167,43 @@ def file_tax_return(*, tenant_id, entity_id, tax_id, period_code, actor_id):
     if existing:
         return existing
     year, month = period_code.split("-")
-    rows = db.session.execute(_text(
+    params = {"t": str(tenant_id), "e": str(entity_id),
+              "x": str(tax_id), "y": int(year), "m": int(month)}
+    month_cond_inv = ("date_trunc('month', i.invoice_date)::date = "
+                      "make_date(CAST(:y AS INTEGER), CAST(:m AS INTEGER), 1)")
+    out = db.session.execute(_text(
         "SELECT COALESCE(SUM(t.tax_amount),0)::float, COALESCE(SUM(i.grand_total),0)::float "
         "FROM customer_invoice_taxes t JOIN customer_invoices i ON i.id = t.invoice_id "
-        "WHERE t.tenant_id = :t AND t.tax_id = :x AND i.status = 'posted' "
-        "AND date_trunc('month', i.invoice_date)::date = make_date(CAST(:y AS INTEGER), CAST(:m AS INTEGER), 1) "
-        "AND t.is_deleted = FALSE"),
-        {"t": str(tenant_id), "x": str(tax_id), "y": int(year), "m": int(month)}).first()
+        "WHERE t.tenant_id = :t AND i.entity_id = :e AND t.tax_id = :x AND i.status = 'posted' "
+        f"AND {month_cond_inv} AND t.is_deleted = FALSE"),
+        params).first()
+    cn = db.session.execute(_text(
+        "SELECT COALESCE(SUM(n.tax_total),0)::float "
+        "FROM credit_notes n JOIN credit_note_lines l ON l.note_id = n.id "
+        "WHERE n.tenant_id = :t AND n.entity_id = :e AND n.status = 'posted' "
+        "AND date_trunc('month', n.note_date)::date = make_date(CAST(:y AS INTEGER), CAST(:m AS INTEGER), 1) "
+        "AND n.is_deleted = FALSE AND l.is_deleted = FALSE AND l.tax_id = :x"),
+        params).first()
+    bills = db.session.execute(_text(
+        "SELECT COALESCE(SUM(b.tax_total),0)::float, COALESCE(SUM(b.grand_total),0)::float "
+        "FROM vendor_bills b WHERE b.tenant_id = :t AND b.entity_id = :e AND b.status = 'posted' "
+        "AND date_trunc('month', b.bill_date)::date = make_date(CAST(:y AS INTEGER), CAST(:m AS INTEGER), 1) "
+        "AND b.is_deleted = FALSE"),
+        params).first()
+    vret = db.session.execute(_text(
+        "SELECT COALESCE(SUM(r.vat_amount),0)::float "
+        "FROM vendor_returns r WHERE r.tenant_id = :t AND r.entity_id = :e AND r.status = 'posted' "
+        "AND date_trunc('month', r.return_date)::date = make_date(CAST(:y AS INTEGER), CAST(:m AS INTEGER), 1) "
+        "AND r.is_deleted = FALSE"),
+        params).first()
+    output_tax = round((out[0] or 0.0) - (cn[0] or 0.0), 3)
+    input_tax = round((bills[0] or 0.0) - (vret[0] or 0.0), 3)
     ret = TaxReturn(tenant_id=uuid.UUID(str(tenant_id)), entity_id=uuid.UUID(str(entity_id)),
                     tax_id=tax.id, period_code=period_code,
-                    sales_total=rows[1] or 0.0, tax_due=rows[0] or 0.0, status="filed",
-                    created_by=actor_id, updated_by=actor_id)
+                    sales_total=(out[1] or 0.0), tax_due=output_tax,
+                    purchase_total=(bills[1] or 0.0), input_tax=input_tax,
+                    output_tax=output_tax, net_due=round(output_tax - input_tax, 3),
+                    status="filed", created_by=actor_id, updated_by=actor_id)
     from datetime import datetime
     ret.filed_at = datetime.utcnow()
     ret.filed_by = actor_id
@@ -194,6 +269,7 @@ def reconcile_statement(statement_id: uuid.UUID, *, actor_id, tolerance_days: in
                 .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
                 .filter(JournalEntry.tenant_id == st.tenant_id,
                         JournalEntry.status == "posted",
+                        JournalEntry.is_reversed.is_(False),
                         JournalLine.is_deleted.is_(False))
                 .filter((JournalLine.debit == abs(float(line.amount))) |
                         (JournalLine.credit == abs(float(line.amount))))

@@ -21,47 +21,7 @@
   };
 
   document.addEventListener("DOMContentLoaded", () => {
-    const login = document.getElementById("login-form");
-    if (login) {
-      login.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const email = document.getElementById("email");
-        const password = document.getElementById("password");
-        const tenant = document.getElementById("tenant");
-        clearError(email);
-        if (!window.validateEmail(email.value)) { showError(email, "يرجى إدخال بريد إلكتروني صحيح"); return; }
-        if (!password.value) { showError(password, "كلمة المرور مطلوبة"); return; }
-        try {
-          const res = await fetch("/api/v1/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Tenant-ID": tenant.value.trim() },
-            body: JSON.stringify({ username: email.value.trim(), password: password.value }),
-          });
-          if (!res.ok) { window.toast("بيانات الدخول غير صحيحة", "error"); return; }
-          const data = await res.json();
-          sessionStorage.setItem("access_token", data.access_token);
-          sessionStorage.setItem("refresh_token", data.refresh_token);
-          try {
-            const payload = JSON.parse(atob(data.access_token.split(".")[1]));
-            if (payload.tenant_id) sessionStorage.setItem("tenant_id", payload.tenant_id);
-            // تهيئة entity_id: جلب أول كيان للمستأجر
-            if (payload.tenant_id) {
-              const entRes = await fetch(`/api/v1/tenants/${payload.tenant_id}/entities`, {
-                headers: { "Authorization": "Bearer " + data.access_token }
-              });
-              if (entRes.ok) {
-                const entData = await entRes.json();
-                const list = (entData && entData.data) || entData;
-                if (Array.isArray(list) && list.length) sessionStorage.setItem("entity_id", list[0].id);
-              }
-            }
-          } catch (err) { /* ignore */ }
-          window.location.href = "/dashboard";
-        } catch (err) {
-          window.toast("تعذر الاتصال بالخادم", "error");
-        }
-      });
-    }
+    /* ملاحظة: الدخول يُدار حصريًا من سكربت مضمّن في login.html (يعمل بلا ملفات خارجية) */
 
     const entryForm = document.getElementById("entry-form");
     if (entryForm) {
@@ -83,7 +43,7 @@
             method: "POST", headers: Object.assign(window.apiHeaders(), {
               "Idempotency-Key": (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) }),
             body: JSON.stringify({
-              entity_id: sessionStorage.getItem("entity_id"),
+              entity_id: storeGet("entity_id"),
               journal_id: fd.get("journal_id"), posting_date: fd.get("posting_date"),
               document_date: fd.get("posting_date"), description: fd.get("description"), lines }),
           });
@@ -145,12 +105,23 @@
     if (el) el.textContent = t.toFixed(3);
   };
   async function fillDocOptions(form) {
-    const eid = sessionStorage.getItem("entity_id");
+    const eid = storeGet("entity_id");
     const get = async (url) => (await (await fetch(url, { headers: window.apiHeaders() })).json()).data || [];
+    const getAll = async (base, maxPages) => {
+      const out = [];
+      const sep = base.includes("?") ? "&" : "?";
+      for (let p = 1; p <= (maxPages || 10); p++) {
+        const env = await (await fetch(`${base}${sep}page=${p}`, { headers: window.apiHeaders() })).json().catch(() => ({}));
+        const rows = (env && env.data) || [];
+        out.push(...rows);
+        if (env.total == null || out.length >= env.total || !rows.length) break;
+      }
+      return out;
+    };
     const kind = form.dataset.kind;
     const partyUrl = kind === "sales" ? "/api/v1/parties?type=customer" : "/api/v1/parties?type=supplier";
     const [parties, products, taxes] = await Promise.all([
-      get(partyUrl), get(`/api/v1/products?entity_id=${eid}`), get("/api/v1/taxes").catch(() => []),
+      get(partyUrl), getAll(`/api/v1/products?entity_id=${eid}`), get("/api/v1/taxes").catch(() => []),
     ]);
     const pSel = form.querySelector('select[name="customer_id"]');
     if (pSel) pSel.innerHTML = `<option value="">اختر…</option>` +
@@ -163,7 +134,7 @@
   }
   document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("invoice-form");
-    if (!form || !sessionStorage.getItem("access_token")) return;
+    if (!form || !storeGet("access_token")) return;
     fillDocOptions(form);
     form.addEventListener("input", invTotal);
     form.addEventListener("submit", async (e) => {
@@ -211,16 +182,59 @@
     });
   });
   /* Generic API forms: <form data-api-post="/api/..." data-redirect="/..." data-method="POST|PUT"> */
+  function storeGet(k) {
+    try {
+      if (window.__store) return window.__store.get(k);
+    } catch (e) { /* ignore */ }
+    try { return sessionStorage.getItem(k); } catch (e) { return null; }
+  }
+  function errText(data, fallback) {
+    if (data && data.error) {
+      return data.error.message ? `${data.error.code}: ${data.error.message}` : (data.error.code || fallback);
+    }
+    return fallback;
+  }
+  function isUuid(s) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s || "");
+  }
   document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll("form[data-api-post]").forEach((form) => {
       const pre = form.dataset.prefill;
-      if (pre && sessionStorage.getItem("access_token")) {
+      if (pre && storeGet("access_token")) {
         api_prefill(form, pre);
       }
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
+        if (form.dataset.busy === "1") return;
+        if (!storeGet("access_token")) {
+          window.toast("انتهت الجلسة — سجّل الدخول أولًا", "error");
+          window.location.href = "/login";
+          return;
+        }
+        // تحقق عميل سريع: الحقول المطلوبة (الصفحة تستخدم novalidate)
+        const missing = [];
+        form.querySelectorAll("[required]").forEach((el) => {
+          if (!String(el.value == null ? "" : el.value).trim()) {
+            missing.push(el);
+            el.classList.add("invalid");
+          } else el.classList.remove("invalid");
+        });
+        if (missing.length) {
+          window.toast("أكمل الحقول المطلوبة (بعلامة *)", "error");
+          missing[0].focus();
+          return;
+        }
+        const eid = storeGet("entity_id");
+        if (!eid && (form.dataset.method || "POST").toUpperCase() === "POST"
+            && !String(form.dataset.apiPost || "").includes("/users")
+            && !String(form.dataset.apiPost || "").includes("/roles")
+            && !String(form.dataset.apiPost || "").includes("/settings")) {
+          window.toast("لا يوجد كيان محدد — أعد تسجيل الدخول", "error");
+          return;
+        }
         const fd = new FormData(form);
-        const payload = { entity_id: sessionStorage.getItem("entity_id") };
+        const payload = {};
+        if (eid) payload.entity_id = eid;
         fd.forEach((v, k) => { if (v !== "" && v !== null) payload[k] = v; });
         ["amount", "price", "sale_price", "standard_cost", "credit_limit", "rate",
          "planned_amount", "budget_total", "total_fees", "discount_pct",
@@ -245,16 +259,36 @@
           ["product_id", "qty", "ordered_qty", "returned_qty", "received_qty",
            "unit_price", "discount_pct"].forEach((k) => delete payload[k]);
         }
+        form.dataset.busy = "1";
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) btn.disabled = true;
         try {
           const res = await fetch(form.dataset.apiPost, {
             method: form.dataset.method || "POST",
             headers: window.apiHeaders(), body: JSON.stringify(payload) });
           const data = await res.json().catch(() => ({}));
           if (res.status === 201 || res.ok) {
-            const id = data.data && data.data.id;
-            window.location.href = form.dataset.redirect + (id ? `/${id}` : "");
-          } else window.toast((data.error && data.error.code) || "تعذر الحفظ", "error");
-        } catch (err) { window.toast("تعذر الاتصال", "error"); }
+            window.toast("تم الحفظ بنجاح", "info");
+            const base = form.dataset.redirect || "";
+            const noAppend = form.dataset.appendId === "0";
+            const field = form.dataset.redirectField || "id";
+            const rid = data.data && (data.data[field] || data.data.id);
+            let target = base;
+            if (rid && !noAppend) {
+              const parts = String(base).split("/").filter(Boolean);
+              const endsWithUuid = parts.some(isUuid);
+              if (!endsWithUuid) target = `${base}/${rid}`;
+            }
+            setTimeout(() => { window.location.href = target || "/dashboard"; }, 300);
+          } else if (res.status === 401) {
+            window.toast("انتهت الجلسة — سجّل الدخول أولًا", "error");
+            window.location.href = "/login";
+          } else window.toast(errText(data, "تعذر الحفظ"), "error");
+        } catch (err) { window.toast("تعذر الاتصال بالخادم", "error"); }
+        finally {
+          form.dataset.busy = "0";
+          if (btn) btn.disabled = false;
+        }
       });
     });
   });

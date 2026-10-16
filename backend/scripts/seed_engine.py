@@ -58,6 +58,8 @@ COA: list[tuple] = [
         ("21", "القروض قصيرة الأجل", "Short-term loans", "liability", "credit", True, []),
         ("2140", "ضريبة المبيعات المستحقة", "VAT payable", "liability", "credit", True, []),
         ("2150", "الرواتب المستحقة", "Salaries payable", "liability", "credit", True, []),
+        ("2151", "ضمان الاجتماعي المستحقة", "Social security payable", "liability", "credit", True, []),
+        ("2160", "ضريبة الدخل المستحقة", "Income tax payable", "liability", "credit", True, []),
         ("22", "القروض طويلة الأجل", "Long-term loans", "liability", "credit", True, []),
         ("23", "الإيراد المؤجل", "Deferred revenue", "liability", "credit", True, []),
     ]),
@@ -98,19 +100,49 @@ JOURNALS = [
 ]
 
 
-def _insert_accounts(session, tenant_id, entity_id, nodes, parent_id=None, admin_id=None):
+# أكواد حسابات رقابية → نوع الوظيفة الرقابية
+CONTROL_MAP = {
+    "1210": "receivable", "2010": "payable", "1310": "inventory",
+    "102001": "bank", "102002": "bank", "101001": "cash", "101002": "cash",
+    "2140": "tax", "2141": "tax", "2151": "employee", "2160": "tax",
+}
+
+ROLE_BY_DEPTH = {1: "section", 2: "general", 3: "subsidiary"}
+
+
+def _insert_accounts(session, tenant_id, entity_id, nodes, parent_id=None,
+                     admin_id=None, depth=1, parent_path=""):
     for code, ar, en, typ, normal, postable, children in nodes:
+        path = f"{parent_path}/{code}" if parent_path else code
+        role = ROLE_BY_DEPTH.get(depth, "detail")
+        ctl = CONTROL_MAP.get(code, "general")
+        is_leaf = len(children) == 0
         exists = session.query(Account).filter_by(tenant_id=tenant_id, entity_id=entity_id, code=code).first()
         if exists:
+            # تحديث الخصائص الناقصة فقط (لا نغيّر موجوداً يدوياً)
+            changed = False
+            if exists.hierarchy_role is None:
+                exists.hierarchy_role = role; changed = True
+            if exists.level is None:
+                exists.level = depth; changed = True
+            if exists.path is None:
+                exists.path = path; changed = True
+            if exists.control_type == "general" and ctl != "general":
+                exists.control_type = ctl; changed = True
+            if changed:
+                session.flush()
             node_id = exists.id
         else:
             acc = Account(tenant_id=tenant_id, entity_id=entity_id, code=code, name_ar=ar, name_en=en,
                           parent_id=parent_id, account_type=typ, normal_balance=normal,
-                          is_postable=postable, created_by=admin_id, updated_by=admin_id)
+                          is_postable=postable, is_leaf=is_leaf, level=depth, path=path,
+                          hierarchy_role=role, control_type=ctl,
+                          created_by=admin_id, updated_by=admin_id)
             session.add(acc)
             session.flush()
             node_id = acc.id
-        _insert_accounts(session, tenant_id, entity_id, children, node_id, admin_id)
+        _insert_accounts(session, tenant_id, entity_id, children, node_id, admin_id,
+                         depth + 1, path)
 
 
 def main():

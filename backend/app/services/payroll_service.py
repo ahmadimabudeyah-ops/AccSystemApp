@@ -110,6 +110,7 @@ def create_run(*, tenant_id, entity_id, fiscal_period_id, pay_month: date,
 def post_run(run_id: uuid.UUID, *, actor_id, salary_expense_code="5110",
              ss_expense_code="5111", salaries_payable_code="2150",
              ss_payable_code="2151", tax_payable_code="2160",
+             loan_account_code: str | None = None,
              journal_code: str = "GEN") -> PayrollRun:
     run = db.session.get(PayrollRun, run_id)
     if run is None or run.is_deleted:
@@ -124,28 +125,55 @@ def post_run(run_id: uuid.UUID, *, actor_id, salary_expense_code="5110",
     if journal is None:
         raise NotFoundError(f"Journal {journal_code} not configured")
     acc = lambda code: _account(run.entity_id, code).id  # noqa: E731
+    slips = db.session.query(Payslip).filter_by(run_id=run.id, is_deleted=False).all()
+    total_loan = round(sum(float(s.deductions or 0) for s in slips), 3)
+    loan_acc = None
+    if total_loan > 0.001:
+        # ساق التسوية إلزامية — بدونها القيد غير متوازن. لا حساب ضمني:
+        # على المشغل تمرير حساب تسوية السلف صراحة.
+        if not loan_account_code:
+            raise ValidationError(
+                "Payroll has loan deductions — pass loan_account_code "
+                "(employee-loan clearing account) to post")
+        loan_acc = _account(run.entity_id, loan_account_code).id
+    lines = [{"account_id": acc(salary_expense_code), "debit": float(run.total_gross), "credit": 0},
+             {"account_id": acc(ss_expense_code), "debit": float(run.total_ss_employer), "credit": 0},
+             # المستحق للموظفين = الصافي + أقساط السلف (الالتزام قبل المقاصة).
+             {"account_id": acc(salaries_payable_code), "debit": 0,
+              "credit": float(run.total_net) + total_loan},
+             {"account_id": acc(ss_payable_code), "debit": 0,
+              "credit": float(run.total_ss_employee) + float(run.total_ss_employer)},
+             {"account_id": acc(tax_payable_code), "debit": 0, "credit": float(run.total_tax)}]
+    if loan_acc is not None:
+        # D المستحق للموظفين بقيمة القسط / C حساب التسوية — ثم يُنزَّل رصيد السلفة.
+        # الموازنة: الصافي يستبعد القسط أصلًا، فالساقان متساويان دومًا.
+        lines.append({"account_id": acc(salaries_payable_code), "debit": total_loan, "credit": 0})
+        lines.append({"account_id": loan_acc, "debit": 0, "credit": total_loan})
+    # المحرك يرفض السطر الصفري (مدين XOR دائن) — أسقط ما قيمته صفر (كالضريبة دون الحد).
+    lines = [l for l in lines if float(l["debit"] or 0) > 0 or float(l["credit"] or 0) > 0]
     entry = posting_service.create_entry(
         {"tenant_id": run.tenant_id, "entity_id": run.entity_id, "journal_id": journal.id,
          "entry_type": "payroll", "document_date": run.pay_month, "posting_date": run.pay_month,
-         "description": f"رواتب {run.run_code}", "source_module": "payroll",
+         "description": f"����� {run.run_code}", "source_module": "payroll",
          "source_document_id": run.id, "source_event_key": f"payroll.run.{run.id}.v1"},
-        [{"account_id": acc(salary_expense_code), "debit": float(run.total_gross), "credit": 0},
-         {"account_id": acc(ss_expense_code), "debit": float(run.total_ss_employer), "credit": 0},
-         {"account_id": acc(salaries_payable_code), "debit": 0, "credit": float(run.total_net)},
-         {"account_id": acc(ss_payable_code), "debit": 0,
-          "credit": float(run.total_ss_employee) + float(run.total_ss_employer)},
-         {"account_id": acc(tax_payable_code), "debit": 0, "credit": float(run.total_tax)}],
-        actor_id=actor_id)
+        lines, actor_id=actor_id)
     entry = posting_service.post_entry(entry.id, actor_id)
     run.journal_entry_id = entry.id
     run.event_key = entry.source_event_key
     run.status = "posted"
     for ps in db.session.query(Payslip).filter_by(run_id=run.id).all():
         ps.status = "posted"
-    for loan in db.session.query(EmployeeLoan).filter_by(status="active", is_deleted=False).all():
-        if loan.employee_id in [p.employee_id for p in
-                                db.session.query(Payslip).filter_by(run_id=run.id).all()]:
-            pass
+    # تسوية السلف: إنزال المطبق من المتبقي (لا اختراع حالات جديدة).
+    for ps in db.session.query(Payslip).filter_by(run_id=run.id, is_deleted=False).all():
+        if not float(ps.deductions or 0):
+            continue
+        loan = db.session.query(EmployeeLoan).filter_by(
+            employee_id=ps.employee_id, status="active", is_deleted=False).first()
+        if loan is None:
+            continue
+        applied = min(float(loan.installment), float(loan.remaining))
+        loan.remaining = round(float(loan.remaining) - applied, 3)
+        loan.updated_by = actor_id
     db.session.commit()
     from . import audit_service as _audit_svc
     _audit_svc.record(tenant_id=run.tenant_id, actor_id=actor_id, action="post",

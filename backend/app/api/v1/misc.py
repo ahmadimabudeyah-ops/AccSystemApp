@@ -30,6 +30,9 @@ def g_tenant():
 @bp.post("/notifications")
 @jwt_required()
 def create_notification():
+    allowed = get_jwt().get("permissions", [])
+    if "settings.manage" not in allowed and "admin.*" not in allowed:
+        return jsonify({"error": {"code": "FORBIDDEN", "message": "settings.manage"}}), 403
     data = request.get_json(force=True)
     me = uuid.UUID(str(get_jwt().get("sub")))
     n = Notification(tenant_id=uuid.UUID(str(g_tenant())), user_id=me,

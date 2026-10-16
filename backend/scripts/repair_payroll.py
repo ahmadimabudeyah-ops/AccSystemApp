@@ -1,4 +1,4 @@
-"""Repair: post draft entries of already-posted payroll runs (pre-fix artifacts)."""
+﻿"""Repair: post draft entries of already-posted payroll runs (pre-fix artifacts)."""
 import sys
 
 sys.path.insert(0, ".")
@@ -6,7 +6,7 @@ from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
+from _ids import TID, EID  # noqa: E402
 app = create_app()
 with app.app_context():
     db.session.execute(text("SET app.current_tenant_id = :t"), {"t": TID})

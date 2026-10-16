@@ -41,6 +41,9 @@ class VendorBillLine(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, Ver
     qty: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
     unit_price: Mapped[float] = mapped_column(Numeric(18, 3), nullable=False)
     line_total: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
+    tax_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("taxes.id", ondelete="RESTRICT"))
+    tax_rate: Mapped[float] = mapped_column(Numeric(7, 4), default=0, nullable=False)
+    tax_amount: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
     account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("accounts.id", ondelete="RESTRICT"))
     bill: Mapped["VendorBill"] = relationship(back_populates="lines")
 

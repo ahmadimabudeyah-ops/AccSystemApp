@@ -1,10 +1,10 @@
-"""Reproduce HTTP 500 on post via test client (full middleware + JWT stack)."""
+﻿"""Reproduce HTTP 500 on post via test client (full middleware + JWT stack)."""
 import sys
 
 sys.path.insert(0, ".")
 from app import create_app  # noqa: E402
 
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
+from _ids import TID, EID  # noqa: E402
 app = create_app()
 app.config.update(TESTING=False, PROPAGATE_EXCEPTIONS=True)
 c = app.test_client()

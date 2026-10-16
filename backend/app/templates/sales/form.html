@@ -1,4 +1,4 @@
 {% extends "layouts/dashboard.html" %}
 {% block title %}{{ page.title }}{% endblock %}
 {% block content %}{% include "shared/_form_body.html" %}{% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/forms.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/forms.js') }}?v=3"></script>{% endblock %}

@@ -148,6 +148,19 @@ def post_payment(pay_id):
     return jsonify({"data": {"id": str(pay.id), "status": pay.status}})
 
 
+@bp.get("/payments/<uuid:pay_id>")
+@jwt_required()
+def get_payment(pay_id):
+    pay = db.session.get(VendorPayment, pay_id)
+    if pay is None or pay.is_deleted or str(pay.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    return jsonify({"data": {"id": str(pay.id), "doc_number": pay.doc_number,
+                             "code": pay.doc_number,
+                             "amount": float(pay.amount),
+                             "unallocated_amount": float(pay.unallocated_amount),
+                             "status": pay.status}})
+
+
 @bp.post("/payments/<uuid:pay_id>/allocate")
 @jwt_required()
 def allocate_payment(pay_id):
@@ -432,7 +445,7 @@ def create_receipt():
     data = request.get_json(force=True)
     try:
         x = docs_service.create_receipt(
-            order_id=data.get("order_id"), tenant_id=data.get("tenant_id") or g.tenant_id,
+            order_id=data.get("order_id"), tenant_id=g.tenant_id,
             entity_id=data.get("entity_id"), supplier_id=data.get("supplier_id"),
             warehouse_id=data["warehouse_id"], lines=data.get("lines"),
             actor_id=uuid.UUID(str(get_jwt().get("sub"))))
@@ -452,3 +465,129 @@ def confirm_receipt(rec_id):
     except AccountingError as exc:
         return _err(exc)
     return jsonify({"data": {"id": str(x.id), "status": x.status}})
+
+
+# ------------------------------------------------------------- purchase agreements
+
+@bp.get("/agreements")
+@jwt_required()
+def list_agreements():
+    from ...models.addons import PurchaseAgreement
+    rows = db.session.query(PurchaseAgreement).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(PurchaseAgreement.created_at.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(a.id), "code": a.code,
+                              "supplier_name": a.supplier_name,
+                              "total_amount": float(a.total_amount),
+                              "status": a.status} for a in rows]})
+
+
+@bp.post("/agreements")
+@jwt_required()
+def create_agreement():
+    denied = _deny()
+    if denied:
+        return denied
+    data = request.get_json(force=True)
+    from ...models.addons import PurchaseAgreement, PurchaseAgreementLine
+    from ...services import sequence_service
+    tenant_id = uuid.UUID(str(g.tenant_id))
+    entity_id = uuid.UUID(str(data["entity_id"]))
+    supplier_id = uuid.UUID(str(data["supplier_id"]))
+    number = sequence_service.next_doc_number(tenant_id=tenant_id, entity_id=entity_id,
+                                              doctype="purchase_agreement", year=date.today().year)
+    sub = Decimal("0")
+    tax = Decimal("0")
+    enriched = []
+    for l in data.get("lines", []):
+        qty = Decimal(str(l.get("qty", 1)))
+        price = Decimal(str(l["unit_price"]))
+        disc = Decimal(str(l.get("discount_pct", 0))) / 100
+        net = qty * price * (1 - disc)
+        rate = Decimal("0")
+        if l.get("tax_id"):
+            from ...models.treasury import Tax as _Tax
+            t = db.session.get(_Tax, uuid.UUID(str(l["tax_id"])))
+            if t is None or not t.is_active:
+                return jsonify({"error": {"code": "VALIDATION",
+                                          "message": f"Invalid tax: {l['tax_id']}"}}), 422
+            rate = Decimal(str(t.rate))
+        t_amount = (net * rate / 100).quantize(Decimal("0.001"))
+        sub += net
+        tax += t_amount
+        enriched.append((l, net, t_amount))
+    agr = PurchaseAgreement(tenant_id=tenant_id, entity_id=entity_id, code=number,
+                            supplier_id=supplier_id, supplier_name=data.get("supplier_name", ""),
+                            start_date=date.fromisoformat(data["start_date"]) if data.get("start_date") else None,
+                            end_date=date.fromisoformat(data["end_date"]) if data.get("end_date") else None,
+                            currency_id=data.get("currency_id", "JOD"),
+                            subtotal=sub, tax_total=tax, grand_total=sub + tax,
+                            total_amount=sub + tax, status="draft",
+                            notes=data.get("notes"),
+                            created_by=uuid.UUID(str(get_jwt().get("sub"))),
+                            updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(agr)
+    db.session.flush()
+    for i, (l, net, t_amount) in enumerate(enriched, 1):
+        db.session.add(PurchaseAgreementLine(
+            tenant_id=tenant_id, agreement_id=agr.id, line_number=i,
+            product_id=uuid.UUID(str(l["product_id"])) if l.get("product_id") else None,
+            description=l.get("description", ""),
+            qty=l.get("qty", 1), unit_price=l["unit_price"],
+            discount_pct=l.get("discount_pct", 0),
+            tax_id=uuid.UUID(str(l["tax_id"])) if l.get("tax_id") else None,
+            line_total=net + t_amount,
+            created_by=uuid.UUID(str(get_jwt().get("sub"))),
+            updated_by=uuid.UUID(str(get_jwt().get("sub")))))
+    db.session.commit()
+    return jsonify({"data": {"id": str(agr.id), "code": agr.code}}), 201
+
+
+@bp.get("/agreements/<uuid:agr_id>")
+@jwt_required()
+def get_agreement(agr_id):
+    from ...models.addons import PurchaseAgreement
+    agr = db.session.get(PurchaseAgreement, agr_id)
+    if agr is None or agr.is_deleted or str(agr.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    from ...models.product import Product
+    pids = {l.product_id for l in agr.lines if not l.is_deleted and l.product_id}
+    pmap = {}
+    if pids:
+        for p in db.session.query(Product).filter(Product.id.in_(pids)).all():
+            pmap[str(p.id)] = {"code": p.code, "name_ar": p.name_ar}
+    return jsonify({"data": {"id": str(agr.id), "code": agr.code,
+                             "supplier_name": agr.supplier_name,
+                             "start_date": agr.start_date.isoformat() if agr.start_date else None,
+                             "end_date": agr.end_date.isoformat() if agr.end_date else None,
+                             "subtotal": float(agr.subtotal),
+                             "tax_total": float(agr.tax_total),
+                             "grand_total": float(agr.grand_total),
+                             "status": agr.status, "notes": agr.notes,
+                             "lines": [{"product_id": str(l.product_id) if l.product_id else None,
+                                        "product_code": (pmap.get(str(l.product_id)) or {}).get("code"),
+                                        "product_name": (pmap.get(str(l.product_id)) or {}).get("name_ar"),
+                                        "description": l.description,
+                                        "qty": float(l.qty), "unit_price": float(l.unit_price),
+                                        "line_total": float(l.line_total)}
+                                       for l in agr.lines if not l.is_deleted]}})
+
+
+@bp.post("/agreements/<uuid:agr_id>/confirm")
+@jwt_required()
+def confirm_agreement(agr_id):
+    denied = _deny()
+    if denied:
+        return denied
+    from ...models.addons import PurchaseAgreement
+    agr = db.session.get(PurchaseAgreement, agr_id)
+    if agr is None or agr.is_deleted:
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    if agr.status == "confirmed":
+        return jsonify({"data": {"id": str(agr.id), "status": agr.status}})
+    if agr.status != "draft":
+        return jsonify({"error": {"code": "BAD_STATE",
+                                  "message": f"Cannot confirm from {agr.status}"}}), 409
+    agr.status = "confirmed"
+    db.session.commit()
+    return jsonify({"data": {"id": str(agr.id), "status": agr.status}})

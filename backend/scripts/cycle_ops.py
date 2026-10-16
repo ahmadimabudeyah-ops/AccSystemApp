@@ -1,11 +1,12 @@
-"""Verify newly added endpoints (batch 2)."""
+﻿"""Verify newly added endpoints (batch 2)."""
 import json
 import urllib.request
 import urllib.error
 
-BASE = "http://127.0.0.1:5000"
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
-EID = "f50db4a1-9381-400d-954b-79c515667f74"
+import os as _os
+BASE = "http://127.0.0.1:" + _os.getenv("BASE_PORT", "5000")
+from _ids import TID, EID  # noqa: E402
+
 
 
 def call(method, path, token=None, body="__none__"):
@@ -48,7 +49,7 @@ def check(name, cond, extra=""):
 s, oapi = call("GET", "/api/v1/openapi.json", admin)
 check("openapi", s == 200 and len(oapi.get("paths", {})) > 100, str(len(oapi.get("paths", {}))))
 s, cf = call("GET", f"/api/v1/reports/cash-flow?entity_id={EID}", admin)
-check("cash-flow", s == 200 and "total" in cf.get("data", {}), str(s))
+check("cash-flow", s == 200 and "totals" in cf.get("data", {}), str(s))
 s, taxes = call("GET", "/api/v1/taxes", admin)
 vat = next(t["id"] for t in taxes["data"] if t["code"] == "VAT16")
 s, tr = call("POST", "/api/v1/tax-returns/file", admin,
@@ -84,7 +85,7 @@ s, emp = call("GET", "/api/v1/hr/employees?entity_id=" + EID, admin)
 import uuid as _uuid
 s, tmp = call("POST", "/api/v1/hr/employees", admin, {
     "entity_id": EID, "employee_no": "E-TMP-" + _uuid.uuid4().hex[:6],
-    "full_name_ar": "موظف مؤقت",
+    "full_name_ar": "ظ…ظˆط¸ظپ ظ…ط¤ظ‚طھ",
     "hire_date": "2026-01-01", "basic_salary": 500})
 assert s == 201, tmp
 eid_ = tmp["data"]["id"]

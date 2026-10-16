@@ -16,9 +16,10 @@ COLS = [{"key": "code", "label": "الرمز"}, {"key": "name_ar", "label": "ا�
 
 
 def _list(title, crumb, active, kind=""):
+    src = "/api/v1/parties" + (f"?type={kind}" if kind else "")
     return render_template("parties/list.html", **h.ctx(
         title, [("الأطراف", url_for("web_parties.list")), (crumb, None)], active=active,
-        new_url=url_for("web_parties.new"), columns=COLS, rows=[], api_src="/api/v1/parties",
+        new_url=url_for("web_parties.new"), columns=COLS, rows=[], api_src=src,
         empty="لا أطراف بعد", row_actions=True, detail_base="/parties"))
 
 
@@ -29,12 +30,12 @@ def list():
 
 @bp.get("/customers")
 def customers():
-    return _list("العملاء", "العملاء", "parties-c")
+    return _list("العملاء", "العملاء", "parties-c", kind="customer")
 
 
 @bp.get("/suppliers")
 def suppliers():
-    return _list("الموردون", "الموردون", "parties-s")
+    return _list("الموردون", "الموردون", "parties-s", kind="supplier")
 
 
 @bp.get("/new")

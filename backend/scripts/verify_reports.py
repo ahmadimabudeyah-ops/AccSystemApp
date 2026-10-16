@@ -1,4 +1,4 @@
-"""Reports consistency: TB balanced, ledger==TB, BS equation holds per period."""
+﻿"""Reports consistency: TB balanced, ledger==TB, BS equation holds per period."""
 import sys
 
 sys.path.insert(0, ".")
@@ -6,8 +6,8 @@ from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
-EID = "f50db4a1-9381-400d-954b-79c515667f74"
+from _ids import TID, EID  # noqa: E402
+
 app = create_app()
 fails = []
 
@@ -40,7 +40,7 @@ with app.app_context():
                 break
         else:
             check(f"ledger==TB {str(pid)[:8]}", True, f"{len(tb['lines'])} accounts")
-        # معادلة الميزانية بصافي (مدين-دائن) المخزن: A+L+E+I+X == صفر (هو نفس توازن الميزان)
+        # ظ…ط¹ط§ط¯ظ„ط© ط§ظ„ظ…ظٹط²ط§ظ†ظٹط© ط¨طµط§ظپظٹ (ظ…ط¯ظٹظ†-ط¯ط§ط¦ظ†) ط§ظ„ظ…ط®ط²ظ†: A+L+E+I+X == طµظپط± (ظ‡ظˆ ظ†ظپط³ طھظˆط§ط²ظ† ط§ظ„ظ…ظٹط²ط§ظ†)
         nets = db.session.execute(text(
             "SELECT a.account_type, SUM(l.debit - l.credit)::float FROM journal_lines l "
             "JOIN journal_entries e ON e.id = l.entry_id JOIN accounts a ON a.id = l.account_id "

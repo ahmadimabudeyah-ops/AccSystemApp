@@ -60,20 +60,26 @@ def validate_balance(lines: list[dict]) -> tuple[Decimal, Decimal]:
     return total_d, total_c
 
 
-def validate_accounts(entity_id: uuid.UUID, lines: list[dict], *, allow_manual_check: bool = True) -> None:
-    """الحسابات من نفس الكيان، قابلة للحركة، نشطة."""
+def validate_accounts(entity_id: uuid.UUID, lines: list[dict], *,
+                      is_manual_entry: bool = True,
+                      posting_date: date | None = None) -> None:
+    """الحسابات من نفس الكيان، قابلة للحركة، نشطة بتاريخ الترحيل.
+
+    مصدر الترحيل (يدوي/آلي) يُحسم من مسار الخادم حصرًا — أي قيمة manual أو
+    source_module يرسلها العميل لا تُعد تصريحًا بتجاوز allow_manual=False.
+    """
+    from .chart_service import check_postable
     for l in lines:
         acc = db.session.get(Account, l["account_id"])
         if acc is None or acc.is_deleted:
             raise BadAccountError(f"Account not found: {l.get('account_id')}")
         if acc.entity_id != entity_id:
             raise BadAccountError(f"Account belongs to another entity: {acc.code}")
-        if not acc.is_postable:
-            raise BadAccountError(f"Account is summary-only: {acc.code}")
-        if acc.status != "active":
-            raise BadAccountError(f"Account is {acc.status}: {acc.code}")
-        if allow_manual_check and not acc.allow_manual and l.get("manual", True):
-            raise BadAccountError(f"Account disallows manual entries: {acc.code}")
+        try:
+            check_postable(acc, posting_date or date.today(),
+                           is_manual_entry=is_manual_entry)
+        except Exception as exc:
+            raise BadAccountError(str(exc)) from exc
 
 
 def validate_period(entity_id: uuid.UUID, posting_date: date, *, allow_soft: bool = False):
@@ -122,7 +128,9 @@ def create_entry(header: dict[str, Any], lines: list[dict],
             raise DuplicateEventError(f"Replayed: {event_key}")
 
     validate_balance(lines)
-    validate_accounts(entity_id, lines)
+    is_manual_entry = (header.get("source_module", "manual") == "manual")
+    validate_accounts(entity_id, lines, is_manual_entry=is_manual_entry,
+                      posting_date=posting_date)
     period = validate_period(entity_id, posting_date)
     total_d, total_c = validate_balance(lines)
 
@@ -198,7 +206,16 @@ def post_entry(entry_id: uuid.UUID, user_id: uuid.UUID,
         raise BadStateError("Entry was modified concurrently")
     if entry.created_by == user_id and entry.source_module == "manual":
         raise SelfApprovalError("Maker cannot post own entry")
+    # إعادة التحقق من الحسابات بتاريخ الترحيل: قد يتغير الحساب
+    # (حالة/نشاط/قابلية/فترة) بين إنشاء المسودة والترحيل النهائي.
     validate_period(entry.entity_id, entry.posting_date)
+    stored = db.session.query(JournalLine).filter_by(
+        entry_id=entry.id, is_deleted=False).all()
+    validate_accounts(
+        entry.entity_id,
+        [{"account_id": l.account_id} for l in stored],
+        is_manual_entry=(entry.source_module == "manual"),
+        posting_date=entry.posting_date)
 
     year_code = str(entry.posting_date.year)
     year = db.session.query(FiscalYear).filter_by(entity_id=entry.entity_id, code=year_code).first()

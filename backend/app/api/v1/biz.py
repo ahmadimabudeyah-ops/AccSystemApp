@@ -183,6 +183,9 @@ def create_schedule():
 @bp.post("/report-schedules/<uuid:sid>/run")
 @jwt_required()
 def run_schedule(sid):
+    allowed = get_jwt().get("permissions", [])
+    if "settings.manage" not in allowed and "reports.view" not in allowed and "admin.*" not in allowed:
+        return jsonify({"error": {"code": "FORBIDDEN", "message": "settings.manage"}}), 403
     from datetime import datetime as _dt
     s = db.session.get(ReportSchedule, sid)
     if s is None or s.is_deleted or str(s.tenant_id) != str(g.tenant_id):

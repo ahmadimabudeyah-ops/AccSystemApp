@@ -1,11 +1,12 @@
-"""Deep audit sweep: exercise every API endpoint, report pass/fail."""
+﻿"""Deep audit sweep: exercise every API endpoint, report pass/fail."""
 import json
 import urllib.request
 import urllib.error
 
-BASE = "http://127.0.0.1:5000"
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
-EID = "f50db4a1-9381-400d-954b-79c515667f74"
+import os as _os
+BASE = "http://127.0.0.1:" + _os.getenv("BASE_PORT", "5000")
+from _ids import TID, EID  # noqa: E402
+
 
 
 def call(method, path, token=None, body=None, headers=None):
@@ -77,8 +78,13 @@ check("entries.detail", s == 200, str(s))
 s, lines = call("GET", f"/api/v1/journal-entries/{eid}/lines", tok) if eid else (0, {})
 check("entries.lines", s == 200 and len(lines.get("data", [])) > 0, str(s))
 
-s, tb = call("GET", "/api/v1/reports/trial-balance?period_id=00000000-0000-0000-0000-000000000000", tok)
-check("reports.tb-empty-period", s == 200 and tb["data"]["balanced"], str(s))
+s, periods = call("GET", "/api/v1/fiscal-periods", tok)
+check("periods.list", s == 200 and len(periods.get("data", [])) > 0, str(s))
+pid = periods["data"][0]["id"] if s == 200 and periods.get("data") else None
+s, tb = call("GET", f"/api/v1/reports/trial-balance?period_id={pid}", tok) if pid else (0, {})
+check("reports.trial-balance", s == 200 and tb["data"]["balanced"], str(s))
+s, tb_bad = call("GET", "/api/v1/reports/trial-balance?period_id=00000000-0000-0000-0000-000000000000", tok)
+check("reports.tb-unknown-period-404", s == 404, str(s))
 s, users = call("GET", "/api/v1/users", tok)
 check("users.list", s == 200 and len(users.get("data", [])) >= 2, str(s))
 s, roles = call("GET", "/api/v1/roles", tok)

@@ -41,6 +41,18 @@ from .project import (
     Project, ProjectCost, ProjectRevenue, Budget, BudgetLine,
     AuditLog, Dimension, DimensionValue,
 )
+from .addons import (
+    Country, City, PurchaseAgreement, PurchaseAgreementLine, DebitNote,
+    DebitNoteLine, BankReconciliation, BankReconciliationLine, CheckBook,
+    AssetTransfer, AssetDisposal, AssetRevaluation, AssetDepreciationSchedule,
+    Loan, LoanSchedule, LoanTransaction, TaxGroup, TaxRate, TaxPayment,
+    WithholdingTax, EmployeeContract, SalaryStructure, SalaryStructureLine,
+    LeaveType, LeaveBalance, AttendanceRecord, AcademicYear, AcademicTerm,
+    GradeLevel, FeeStructure, FeeStructureLine, ProjectPhase, ProjectTask,
+    BudgetVersion, BudgetTransfer, Forecast, ForecastLine, Integration,
+    Webhook, WebhookDelivery, ApiRequestLog, Attachment, DocumentTemplate,
+    Delegation, ApiKey,
+)
 
 __all__ = [
     "Base", "Tenant", "Plan", "Subscription", "User", "Role", "Permission",
@@ -68,4 +80,14 @@ __all__ = [
     "Student", "Guardian", "FeeContract", "FeeInstallment", "FeePayment",
     "Project", "ProjectCost", "ProjectRevenue", "Budget", "BudgetLine",
     "AuditLog", "Dimension", "DimensionValue",
+    "Country", "City", "PurchaseAgreement", "PurchaseAgreementLine", "DebitNote",
+    "DebitNoteLine", "BankReconciliation", "BankReconciliationLine", "CheckBook",
+    "AssetTransfer", "AssetDisposal", "AssetRevaluation", "AssetDepreciationSchedule",
+    "Loan", "LoanSchedule", "LoanTransaction", "TaxGroup", "TaxRate", "TaxPayment",
+    "WithholdingTax", "EmployeeContract", "SalaryStructure", "SalaryStructureLine",
+    "LeaveType", "LeaveBalance", "AttendanceRecord", "AcademicYear", "AcademicTerm",
+    "GradeLevel", "FeeStructure", "FeeStructureLine", "ProjectPhase", "ProjectTask",
+    "BudgetVersion", "BudgetTransfer", "Forecast", "ForecastLine", "Integration",
+    "Webhook", "WebhookDelivery", "ApiRequestLog", "Attachment", "DocumentTemplate",
+    "Delegation", "ApiKey",
 ]

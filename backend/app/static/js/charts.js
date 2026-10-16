@@ -39,21 +39,23 @@
     }
     const rev = document.getElementById("revenue-chart");
     if (rev) {
-      const initData = (window.__dash && window.__dash.revenue_mix) || [0, 0, 0];
+      const mix0 = window.__dash && window.__dash.revenue_mix;
       const chart2 = new Chart(rev, {
         type: "doughnut",
         data: {
-          labels: ["مبيعات", "خدمات", "أخرى"],
+          labels: (mix0 && mix0.labels) || ["لا إيرادات بعد"],
           datasets: [{
-            data: initData,
-            backgroundColor: ["#A67B5B", "#C9A961", "#E5D5C5"],
+            data: (mix0 && mix0.values) || [0],
+            backgroundColor: ["#A67B5B", "#C9A961", "#E5D5C5", "#8a7a68"],
           }],
         },
         options: { plugins: { legend: { position: "bottom", rtl: true } } },
       });
       document.addEventListener("dash:ready", () => {
-        if (window.__dash && window.__dash.revenue_mix) {
-          chart2.data.datasets[0].data = window.__dash.revenue_mix;
+        const mix = window.__dash && window.__dash.revenue_mix;
+        if (mix && mix.labels && mix.labels.length) {
+          chart2.data.labels = mix.labels;
+          chart2.data.datasets[0].data = mix.values;
           chart2.update();
         }
       });

@@ -28,6 +28,7 @@ class CustomerInvoice(Base, PKMixin, TenantMixin, TimestampMixin, AuditMixin, Ve
     remaining_amount: Mapped[float] = mapped_column(Numeric(18, 3), default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False)
     journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("journal_entries.id", ondelete="RESTRICT"))
+    cogs_posted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     event_key: Mapped[str | None] = mapped_column(String(200))
     einvoice_uuid: Mapped[str | None] = mapped_column(String(100))
     reference: Mapped[str | None] = mapped_column(String(100))

@@ -39,7 +39,7 @@ def general():
 @bp.post("/general")
 def save_general():
     # الحفظ الفعلي عبر api_post (PUT) أعلاه — هذا المسار القديم لا يحفظ.
-    flash("استخدم نموذج الإعدادات — الحفظ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_settings.general"))
 
 
@@ -56,7 +56,7 @@ def company():
 
 @bp.post("/company")
 def save_company():
-    flash("استخدم نموذج بيانات الشركة — الحفظ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_settings.company"))
 
 
@@ -96,7 +96,7 @@ def new_user():
 @bp.post("/users")
 def create_user():
     # المسار القديم بدون JWT — الإنشاء الفعلي عبر api_post أعلاه.
-    flash("استخدم نموذج المستخدم — الحفظ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_settings.users"))
 
 
@@ -109,6 +109,22 @@ def user_detail(u_id):
         doc_kind="user", doc_id=u_id,
         actions=[{"label": "تعديل", "url": url_for("web_settings.edit_user", u_id=u_id)}],
         sections=[]))
+
+
+@bp.get("/users/<u_id>/edit")
+def edit_user(u_id):
+    return render_template("settings/form.html", **h.ctx(
+        "تعديل مستخدم", [("الإعدادات", url_for("web_settings.index")),
+                         ("المستخدمون", url_for("web_settings.users")), ("تعديل", None)],
+        active="set-u", api_post=f"/api/v1/users/{u_id}", redirect_url="/settings/users",
+        method="PUT", prefill=f"/api/v1/users/{u_id}",
+        fields=[{"name": "is_active", "label": "الحالة", "type": "select",
+                 "options": [("true", "نشط"), ("false", "موقوف")]},
+                {"name": "password", "label": "كلمة مرور جديدة (اتركها فارغة للإبقاء)",
+                 "type": "password", "ltr": True},
+                {"name": "role_id", "label": "الدور", "type": "select", "source": "roles"}],
+        submit="حفظ التعديلات",
+        cancel_url=url_for("web_settings.user_detail", u_id=u_id)))
 
 
 @bp.get("/roles")
@@ -134,7 +150,7 @@ def new_role():
 
 @bp.post("/roles")
 def create_role():
-    flash("استخدم نموذج الدور — الحفظ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_settings.roles"))
 
 
@@ -147,6 +163,18 @@ def role_detail(r_id):
         doc_kind="role", doc_id=r_id,
         actions=[{"label": "تعديل", "url": url_for("web_settings.edit_role", r_id=r_id)}],
         sections=[]))
+
+
+@bp.get("/roles/<r_id>/edit")
+def edit_role(r_id):
+    return render_template("settings/form.html", **h.ctx(
+        "تعديل دور", [("الإعدادات", url_for("web_settings.index")),
+                      ("الأدوار", url_for("web_settings.roles")), ("تعديل", None)],
+        active="set-r", api_post=f"/api/v1/roles/{r_id}", redirect_url="/settings/roles",
+        method="PUT", prefill=f"/api/v1/roles/{r_id}",
+        fields=[{"name": "name_ar", "label": "الاسم", "required": True}],
+        submit="حفظ التعديلات",
+        cancel_url=url_for("web_settings.role_detail", r_id=r_id)))
 
 
 @bp.get("/currencies")
@@ -189,7 +217,7 @@ def profile():
     return render_template("settings/form.html", **h.ctx(
         "الملف الشخصي", [("الإعدادات", url_for("web_settings.index")), ("الملف", None)],
         active="settings", api_post="/api/v1/users/me", redirect_url="/settings/profile",
-        method="PUT", prefill="/api/v1/users/me",
+        method="PUT", prefill="/api/v1/users/me", no_append=True,
         fields=[{"name": "full_name", "label": "الاسم الكامل"},
                 {"name": "email", "label": "البريد", "type": "email", "ltr": True}],
         cancel_url=url_for("web_settings.index")))
@@ -197,5 +225,5 @@ def profile():
 
 @bp.post("/profile")
 def save_profile():
-    flash("استخدم نموذج الملف الشخصي — الحفظ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_settings.profile"))

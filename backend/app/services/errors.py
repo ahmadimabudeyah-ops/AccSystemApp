@@ -69,3 +69,8 @@ class AlreadyReversedError(AccountingError):
 class ValidationError(AccountingError):
     code = "VALIDATION_ERROR"
     status = 422
+
+
+class ReportConfigError(AccountingError):
+    code = "REPORT_CONFIG_CONFLICT"
+    status = 409

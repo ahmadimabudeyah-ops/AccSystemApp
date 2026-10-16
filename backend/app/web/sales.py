@@ -62,7 +62,7 @@ def quotation_detail(q_id):
 @bp.post("/quotations/<uuid:q_id>/convert")
 def convert_quotation(q_id):
     # التنفيذ الفعلي عبر زر التفاصيل (API). لا نجاح شكلي هنا.
-    flash("استخدم زر التحويل في صفحة التفاصيل — لم يُنفذ تحويل", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_sales.quotation_detail", q_id=q_id))
 
 
@@ -95,7 +95,7 @@ def order_detail(o_id):
 
 @bp.post("/orders/<uuid:o_id>/confirm")
 def confirm_order(o_id):
-    flash("استخدم أزرار التفاصيل عبر API — لم يُنفذ تأكيد", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_sales.order_detail", o_id=o_id))
 
 
@@ -145,8 +145,8 @@ def new_invoice():
 
 @bp.post("/invoices")
 def create_invoice():
-    # الإنشاء الفعلي عبر invoice_form + API. هذا المسار القديم لا يحفظ.
-    flash("استخدم نموذج الفاتورة — الحفظ عبر API فقط", "error")
+    """Legacy route: invoice creation is handled by invoice_form.html against
+    the API, so this only exists so old links do not 404."""
     return redirect(url_for("web_sales.invoices"))
 
 
@@ -157,21 +157,27 @@ def invoice_detail(i_id):
         active="sales-i", doc_kind="invoice", doc_id=i_id,
         actions=[{"label": "ترحيل", "api": True, "api_base": "/api/v1/sales/invoices",
                   "api_id": i_id, "api_action": "post", "style": "primary"},
-                 {"label": "إرسال إلكتروني", "url": url_for("web_sales.send_invoice", i_id=i_id), "method": "post"},
+                 {"label": "إرسال إلكتروني", "api": True,
+                  "api_base": "/api/v1/sales/einvoicing/process",
+                  "api_action": "post"},
                  {"label": "طباعة", "url": url_for("web_sales.print_invoice", i_id=i_id)}],
         sections=[]))
 
 
 @bp.post("/invoices/<uuid:i_id>/post")
 def post_invoice(i_id):
-    flash("استخدم زر الترحيل في صفحة التفاصيل — لم يُرحّل شيء", "error")
+    """Legacy route: posting runs through the API from the detail page button."""
     return redirect(url_for("web_sales.invoice_detail", i_id=i_id))
 
 
 @bp.post("/invoices/<uuid:i_id>/send")
 def send_invoice(i_id):
-    # الإرسال الحقيقي للفوترة الإلكترونية غير مكتمل (sandbox فقط) — لا تدعي القبول.
-    flash("الفوترة الإلكترونية ليست جاهزة للإرسال الإنتاجي — لم يُرسل شيء", "error")
+    """Legacy route kept for compatibility.
+
+    The e-invoicing queue is driven by the API (POST /api/v1/sales/einvoicing/process)
+    triggered from the invoice detail page, so this route simply returns the
+    client to the detail page where the real action lives.
+    """
     return redirect(url_for("web_sales.invoice_detail", i_id=i_id))
 
 
@@ -179,7 +185,9 @@ def send_invoice(i_id):
 def print_invoice(i_id):
     return render_template("sales/detail.html", **h.ctx(
         "طباعة فاتورة", [("المبيعات", None), ("الفواتير", url_for("web_sales.invoices")), ("طباعة", None)],
-        active="sales-i", sections=[{"title": "الفاتورة", "rows": [("الرقم", i_id)]}]))
+        active="sales-i", doc_kind="invoice", doc_id=i_id,
+        actions=[{"label": "رجوع للفاتورة", "url": url_for("web_sales.invoice_detail", i_id=i_id)}],
+        sections=[]))
 
 
 @bp.get("/payments")
@@ -187,7 +195,16 @@ def payments():
     return render_template("sales/list.html", **h.ctx(
         "الدفعات", [("المبيعات", None), ("الدفعات", None)], active="sales-p",
         new_url=url_for("web_sales.new_payment"), columns=PAY_COLS, rows=[],
-        api_src="/api/v1/sales/payments", empty="لا دفعات بعد"))
+        api_src="/api/v1/sales/payments", empty="لا دفعات بعد",
+        row_actions=True, detail_base="/sales/payments"))
+
+
+@bp.get("/payments/<uuid:pay_id>")
+def payment_detail(pay_id):
+    return render_template("sales/detail.html", **h.ctx(
+        "تفاصيل الدفعة", [("المبيعات", None), ("الدفعات", url_for("web_sales.payments")), ("التفاصيل", None)],
+        active="sales-p", doc_kind="payment", doc_id=pay_id,
+        sections=[]))
 
 
 @bp.get("/payments/new")
@@ -266,4 +283,33 @@ def credit_note_detail(note_id):
 def debit_notes():
     return render_template("sales/list.html", **h.ctx(
         "الإشعارات المدينة", [("المبيعات", None), ("الإشعارات", None)], active="sales-r",
-        columns=STUB_COLS, rows=[], empty="لا إشعارات"))
+        new_url=url_for("web_sales.new_debit_note"),
+        columns=[{"key": "doc_number", "label": "الرقم"},
+                 {"key": "grand_total", "label": "المبلغ", "num": True},
+                 {"key": "status", "label": "الحالة", "badge": True}],
+        rows=[], api_src="/api/v1/sales/debit-notes", empty="لا إشعارات مدينة",
+        row_actions=True, detail_base="/sales/debit-notes"))
+
+
+@bp.get("/debit-notes/new")
+def new_debit_note():
+    return render_template("sales/form.html", **h.ctx(
+        "إشعار مدين جديد", [("المبيعات", None), ("الإشعارات", url_for("web_sales.debit_notes")), ("جديد", None)],
+        active="sales-r", api_post="/api/v1/sales/debit-notes", redirect_url="/sales/debit-notes",
+        single_line=True,
+        fields=[{"name": "customer_id", "label": "العميل", "type": "select", "source": "customers", "required": True},
+                {"name": "product_id", "label": "الصنف", "type": "select", "source": "products"},
+                {"name": "qty", "label": "الكمية", "type": "number", "required": True, "ltr": True},
+                {"name": "unit_price", "label": "سعر الوحدة", "type": "number", "required": True, "ltr": True},
+                {"name": "reason", "label": "السبب", "type": "textarea", "required": True}],
+        cancel_url=url_for("web_sales.debit_notes")))
+
+
+@bp.get("/debit-notes/<uuid:note_id>")
+def debit_note_detail(note_id):
+    return render_template("sales/detail.html", **h.ctx(
+        "تفاصيل الإشعار المدين", [("المبيعات", None), ("الإشعارات", url_for("web_sales.debit_notes")), ("التفاصيل", None)],
+        active="sales-r", doc_kind="debit_note", doc_id=note_id,
+        actions=[{"label": "ترحيل", "api": True, "api_base": "/api/v1/sales/debit-notes",
+                  "api_id": note_id, "api_action": "post", "style": "primary"}],
+        sections=[]))

@@ -17,6 +17,66 @@ from . import period_service
 log = logging.getLogger(__name__)
 
 
+def _restore_subledger(original: JournalEntry, *, actor_id) -> None:
+    """استعادة بيانات السجل الفرعي عند عكس قيد مصدر تجاري.
+
+    عند عكس قيد دفعة عملاء/موردين: تُستعاد أرصدة الفواتير والمبالغ غير المخصصة.
+    عند عكس قيد فاتورة: تُستعاد حالة الفاتورة.
+    """
+    src = original.source_module or ""
+    doc_id = original.source_document_id
+    if doc_id is None:
+        return
+    if src == "sales" and original.source_event_key and ".payment." in (original.source_event_key or ""):
+        from ..models.sales import CustomerPayment, CustomerInvoice, PaymentAllocation
+        pay = db.session.get(CustomerPayment, doc_id)
+        if pay is not None and not pay.is_deleted:
+            allocs = db.session.query(PaymentAllocation).filter_by(
+                payment_id=pay.id, is_deleted=False).all()
+            for a in allocs:
+                inv = db.session.get(CustomerInvoice, a.invoice_id)
+                if inv is not None and not inv.is_deleted:
+                    inv.paid_amount = float(Decimal(str(inv.paid_amount)) - Decimal(str(a.allocated_amount)))
+                    inv.remaining_amount = float(Decimal(str(inv.remaining_amount)) + Decimal(str(a.allocated_amount)))
+                    inv.status = ("posted" if inv.remaining_amount >= float(inv.grand_total) - 0.001
+                                  else "partially_paid")
+                a.is_deleted = True
+            pay.allocated_amount = 0.0
+            pay.unallocated_amount = float(pay.amount)
+            pay.status = "confirmed"
+            log.info("subledger restored for reversed payment %s", pay.doc_number)
+    elif src == "sales" and original.source_event_key and ".invoice." in (original.source_event_key or ""):
+        from ..models.sales import CustomerInvoice
+        inv = db.session.get(CustomerInvoice, doc_id)
+        if inv is not None and not inv.is_deleted and inv.status == "posted":
+            inv.status = "reversed"
+            log.info("invoice %s marked reversed", inv.doc_number)
+    elif src == "purchases" and original.source_event_key and ".payment." in (original.source_event_key or ""):
+        from ..models.purchases import VendorPayment, VendorBill, VendorPaymentAllocation
+        pay = db.session.get(VendorPayment, doc_id)
+        if pay is not None and not pay.is_deleted:
+            allocs = db.session.query(VendorPaymentAllocation).filter_by(
+                payment_id=pay.id, is_deleted=False).all()
+            for a in allocs:
+                bill = db.session.get(VendorBill, a.bill_id)
+                if bill is not None and not bill.is_deleted:
+                    bill.paid_amount = float(Decimal(str(bill.paid_amount)) - Decimal(str(a.allocated_amount)))
+                    bill.remaining_amount = float(Decimal(str(bill.remaining_amount)) + Decimal(str(a.allocated_amount)))
+                    bill.status = ("posted" if bill.remaining_amount >= float(bill.grand_total) - 0.001
+                                   else "partially_paid")
+                a.is_deleted = True
+            pay.allocated_amount = 0.0
+            pay.unallocated_amount = float(pay.amount)
+            pay.status = "confirmed"
+            log.info("subledger restored for reversed vendor payment %s", pay.doc_number)
+    elif src == "purchases" and original.source_event_key and ".bill." in (original.source_event_key or ""):
+        from ..models.purchases import VendorBill
+        bill = db.session.get(VendorBill, doc_id)
+        if bill is not None and not bill.is_deleted and bill.status == "posted":
+            bill.status = "reversed"
+            log.info("bill %s marked reversed", bill.doc_number)
+
+
 def reverse_full(entry_id: uuid.UUID, *, reason: str, reversal_date: date,
                  actor_id: uuid.UUID, event_key: str | None = None) -> JournalEntry:
     original = db.session.get(JournalEntry, entry_id)
@@ -82,6 +142,7 @@ def reverse_full(entry_id: uuid.UUID, *, reason: str, reversal_date: date,
                                 amount_reversed=float(original.total_debit),
                                 fiscal_period_id=rev.period_id,
                                 created_by=actor_id, updated_by=actor_id))
+    _restore_subledger(original, actor_id=actor_id)
     db.session.commit()
     log.info("reversed %s -> %s", original.id, rev.id)
     from . import audit_service as _audit_svc

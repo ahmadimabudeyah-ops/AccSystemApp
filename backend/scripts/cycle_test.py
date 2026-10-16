@@ -1,4 +1,4 @@
-"""Full accounting cycle: maker creates -> checker posts -> trial balance -> reverse.
+﻿"""Full accounting cycle: maker creates -> checker posts -> trial balance -> reverse.
 
 Usage: python scripts/cycle_test.py
 Exit nonzero on any failure. Idempotent keys use a fresh uuid per run.
@@ -9,9 +9,10 @@ import urllib.request
 import urllib.error
 import uuid
 
-BASE = "http://127.0.0.1:5000"
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
-EID = "f50db4a1-9381-400d-954b-79c515667f74"
+import os as _os
+BASE = "http://127.0.0.1:" + _os.getenv("BASE_PORT", "5000")
+from _ids import TID, EID  # noqa: E402
+
 
 
 def call(method, path, token=None, body=None):

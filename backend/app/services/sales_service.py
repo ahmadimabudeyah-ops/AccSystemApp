@@ -29,7 +29,10 @@ def _account(model, entity_id, code: str):
 
 
 def compute_totals(lines: list[dict]) -> dict:
-    """Totals per line: qty*price*(1-disc) + tax by tax_id rate."""
+    """Totals per line: qty*price*(1-disc) + tax.
+
+    النسبة تُقرأ من tax_rate المرسل، وتُقدَّم نسبة tax_id عند وجودها (مصدر أوثق).
+    """
     sub = Decimal("0")
     tax = Decimal("0")
     enriched = []
@@ -38,7 +41,8 @@ def compute_totals(lines: list[dict]) -> dict:
         price = Decimal(str(l["unit_price"]))
         disc = Decimal(str(l.get("discount_pct", 0))) / 100
         net = qty * price * (1 - disc)
-        rate = Decimal("0")
+        # نسبة مُرسلة صراحةً كبديل (مثل المشتريات)؛ tax_id تُرجّح عند وجودها
+        rate = Decimal(str(l.get("tax_rate", 0) or 0))
         tax_id = l.get("tax_id")
         if tax_id:
             t = db.session.get(Tax, uuid.UUID(str(tax_id)))
@@ -101,6 +105,91 @@ def create_invoice(*, tenant_id, entity_id, customer_id, invoice_date: date,
     return inv
 
 
+def _stock_warnings(inv) -> list[dict]:
+    """تحذير غير حاجب: أصناف مخزنية مفوترة بلا تغطية مخزنية كافية.
+
+    التكلفة تُسجل عند التسليم لا الفوترة، لكن البيع بلا رصيد مؤشر خطر —
+    يُسجل في السجل ويُعرض في الاستجابة دون منع الترحيل.
+    """
+    from sqlalchemy import func as _func
+    from ..models.product import StockQuant
+    out = []
+    for l in inv.lines:
+        if l.is_deleted:
+            continue
+        product = db.session.get(Product, l.product_id)
+        if product is None or product.product_type != "stockable":
+            continue
+        avail = db.session.query(
+            _func.coalesce(_func.sum(StockQuant.qty - StockQuant.reserved_qty), 0)).filter(
+            StockQuant.product_id == l.product_id,
+            StockQuant.is_deleted.is_(False)).scalar() or 0
+        if float(avail) < float(l.qty or 0) - 0.001:
+            out.append({"product_id": str(l.product_id),
+                        "product_code": product.code,
+                        "invoiced_qty": float(l.qty or 0),
+                        "available_qty": float(avail)})
+    return out
+
+
+def _post_invoice_cogs(inv, *, actor_id) -> None:
+    """ترحيل كلفة البضاعة المباعة لفاتورة مباشرة (بلا توصيل).
+
+    يُرحَّل فقط للأصناف المخزنية التي لم يُرحَّل تكلفتها عبر التسليم.
+    يخصم المخزون بمتوسط التكلفة ويقيد: مصروف كلفة مدين / مخزون دائن.
+    """
+    from ..models.product import Product, StockQuant, StockMove
+    cogs_lines = []
+    for l in inv.lines:
+        if l.is_deleted:
+            continue
+        product = db.session.get(Product, l.product_id)
+        if product is None or product.product_type != "stockable":
+            continue
+        cost = round(float(l.qty) * float(product.avg_cost or 0), 3)
+        if cost <= 0:
+            continue
+        # خصم المخزون إن وُجد
+        q = db.session.query(StockQuant).filter_by(
+            product_id=l.product_id, is_deleted=False).first()
+        if q is not None and float(q.qty) >= float(l.qty) - 0.001:
+            q.qty = float(q.qty) - float(l.qty)
+            db.session.add(StockMove(
+                tenant_id=inv.tenant_id, entity_id=inv.entity_id, product_id=l.product_id,
+                uom_id=product.base_uom_id, qty=float(l.qty),
+                source_location_id=q.location_id, move_type="delivery", status="done",
+                reference=inv.doc_number, move_date=inv.invoice_date,
+                unit_cost=float(product.avg_cost or 0),
+                created_by=actor_id, updated_by=actor_id))
+        cogs_lines.append(cost)
+    if not cogs_lines:
+        inv.cogs_posted = True
+        return
+    total_cogs = round(sum(cogs_lines), 3)
+    from ..models.journal import Journal
+    journal = db.session.query(Journal).filter_by(
+        tenant_id=inv.tenant_id, entity_id=inv.entity_id, code="SALE", is_deleted=False).first()
+    if journal is None:
+        journal = db.session.query(Journal).filter_by(
+            tenant_id=inv.tenant_id, entity_id=inv.entity_id, code="GEN", is_deleted=False).first()
+    if journal is None:
+        return
+    cogs_acc = _account(None, inv.entity_id, "5010")
+    stock_acc = _account(None, inv.entity_id, "1310")
+    entry = posting_service.create_entry(
+        {"tenant_id": inv.tenant_id, "entity_id": inv.entity_id, "journal_id": journal.id,
+         "entry_type": "source", "document_date": inv.invoice_date, "posting_date": inv.invoice_date,
+         "description": f"كلفة مبيعات فاتورة {inv.doc_number}", "source_module": "sales",
+         "source_document_id": inv.id, "source_event_key": f"sales.invoice.{inv.id}.cogs.v1",
+         "currency_id": "JOD", "exchange_rate": 1},
+        [{"account_id": cogs_acc.id, "debit": total_cogs, "credit": 0},
+         {"account_id": stock_acc.id, "debit": 0, "credit": total_cogs}],
+        actor_id=actor_id)
+    posting_service.post_entry(entry.id, actor_id)
+    inv.cogs_posted = True
+    log.info("invoice %s COGS posted: %s", inv.doc_number, total_cogs)
+
+
 def post_invoice(invoice_id: uuid.UUID, *, actor_id, journal_code: str = "SALE") -> CustomerInvoice:
     """ترحيل الفاتورة: عميل مدين / إيراد + ضريبة دائنة + صف JoFotara."""
     inv = db.session.get(CustomerInvoice, invoice_id)
@@ -149,6 +238,13 @@ def post_invoice(invoice_id: uuid.UUID, *, actor_id, journal_code: str = "SALE")
     inv.event_key = entry.source_event_key
     inv.status = "posted"
     inv.posted_at = entry.posted_at
+    # COGS للفواتير المباشرة (بلا توصيل): أصناف مخزنية لم يُرحَّل تكلفتها بعد
+    if not inv.cogs_posted:
+        _post_invoice_cogs(inv, actor_id=actor_id)
+    warnings = _stock_warnings(inv)
+    if warnings:
+        log.warning("invoice %s posted with low stock: %s", inv.doc_number, warnings)
+    inv.stock_warnings = warnings
     db.session.execute(_text(
         "INSERT INTO einvoicing_queue(tenant_id, invoice_id, einv_status, priority, created_by, updated_by)"
         " VALUES (:t, :i, 'queued', 100, :u, :u) ON CONFLICT DO NOTHING"),
@@ -188,11 +284,14 @@ def create_payment(*, tenant_id, entity_id, customer_id, pay_date: date,
 
 def allocate(*, payment_id, allocations: list[dict], actor_id) -> CustomerPayment:
     """تخصيص دفعة على فواتير + لفّ المتبقي والحالات تلقائيًا."""
-    pay = db.session.get(CustomerPayment, payment_id)
+    pay = db.session.get(CustomerPayment, payment_id, with_for_update=True)
     if pay is None or pay.is_deleted:
         raise NotFoundError("Payment not found")
     if pay.status != "posted":
         raise BadStateError(f"Allocate requires posted payment (now {pay.status}) — post first")
+    for a in allocations:
+        if Decimal(str(a["allocated_amount"])) <= 0:
+            raise ValidationError("Allocated amount must be positive")
     total = sum(Decimal(str(a["allocated_amount"])) for a in allocations)
     free = Decimal(str(pay.unallocated_amount))
     if total > free:

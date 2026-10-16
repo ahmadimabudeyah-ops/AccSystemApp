@@ -263,9 +263,55 @@ def set_check_status(check_id):
     if c is None or c.is_deleted or str(c.tenant_id) != str(g.tenant_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     data = request.get_json(force=True)
-    if data.get("status") not in ("issued", "cashed", "bounced", "cancelled", "deferred"):
+    new_status = data.get("status")
+    if new_status not in ("issued", "cashed", "bounced", "cancelled", "deferred"):
         return jsonify({"error": {"code": "BAD_STATUS"}}), 422
-    c.status = data["status"]
+    me = uuid.UUID(str(get_jwt().get("sub")))
+    old_status = c.status
+    # قيد GL عند التحصيل أو الرجوع
+    if new_status == "cashed" and old_status != "cashed" and c.journal_entry_id is None:
+        try:
+            from ...models.bank import BankAccount as _BA  # noqa
+        except ImportError:
+            pass
+        from ...models.treasury import BankAccount
+        ba = db.session.get(BankAccount, c.bank_account_id)
+        if ba is None:
+            return jsonify({"error": {"code": "BANK_ACCOUNT_NOT_FOUND"}}), 422
+        # حساب البنك من رمز الحساب البنكي
+        from ...models.account import Account
+        bank_gl = db.session.query(Account).filter_by(
+            entity_id=c.entity_id, code=ba.code, is_deleted=False).first()
+        if bank_gl is None:
+            # بديل: حساب 102001
+            bank_gl = db.session.query(Account).filter_by(
+                entity_id=c.entity_id, code="102001", is_deleted=False).first()
+        # حساب الالتزام (افتراضي 2010 الموردون) أو من الطلب
+        offset_code = data.get("offset_account_code", "2010")
+        offset_gl = db.session.query(Account).filter_by(
+            entity_id=c.entity_id, code=offset_code, is_deleted=False).first()
+        if bank_gl is None or offset_gl is None:
+            return jsonify({"error": {"code": "ACCOUNT_NOT_CONFIGURED"}}), 422
+        journal = _journal(c.entity_id, "BANK")
+        entry = posting_service.create_entry(
+            {"tenant_id": c.tenant_id, "entity_id": c.entity_id, "journal_id": journal.id,
+             "entry_type": "source", "document_date": c.due_on, "posting_date": c.due_on,
+             "description": f"تحصيل شيك {c.check_no} — {c.payee}", "source_module": "treasury",
+             "source_event_key": f"check.cashed.{c.id}.v1"},
+            [{"account_id": offset_gl.id, "debit": float(c.amount), "credit": 0},
+             {"account_id": bank_gl.id, "debit": 0, "credit": float(c.amount)}],
+            actor_id=me)
+        entry = posting_service.post_entry(entry.id, me)
+        c.journal_entry_id = entry.id
+    elif new_status == "bounced" and old_status == "cashed" and c.journal_entry_id is not None and c.reversal_entry_id is None:
+        # عكس قيد التحصيل
+        from ...services import reversal_service
+        rev = reversal_service.reverse_full(
+            c.journal_entry_id, reason=f"شيك مرتد {c.check_no}",
+            reversal_date=date.today(), actor_id=me,
+            event_key=f"check.bounced.{c.id}.v1")
+        c.reversal_entry_id = rev.id
+    c.status = new_status
     db.session.commit()
     return jsonify({"data": {"id": str(c.id), "status": c.status}})
 
@@ -313,13 +359,36 @@ def create_transfer():
                      to_bank_account_id=uuid.UUID(str(data["to_bank_account_id"])) if data.get("to_bank_account_id") else None,
                      transfer_date=entry.posting_date, amount=data["amount"],
                      currency_id=entry.currency_id, status="draft",
-                     notes=data.get("notes"), created_by=me, updated_by=me)
+                     journal_entry_id=entry.id,
+                     created_by=me, updated_by=me)
         db.session.add(t)
         db.session.commit()
     except AccountingError as exc:
         return _err(exc)
     return jsonify({"data": {"id": str(t.id), "doc_number": number,
                              "entry_id": str(entry.id), "status": "draft"}}), 201
+
+
+@bp.post("/transfers/<uuid:transfer_id>/post")
+@jwt_required()
+def post_transfer(transfer_id):
+    """ترحيل التحويل: قيد مخزن يُرحَّل (خطوتان: إنشاء ثم ترحيل)."""
+    denied = _deny("treasury.manage")
+    if denied:
+        return denied
+    t = db.session.get(Transfer, transfer_id)
+    if t is None or t.is_deleted or str(t.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    if t.status == "posted":
+        return jsonify({"data": {"id": str(t.id), "status": "posted"}})
+    try:
+        e = posting_service.post_entry(t.journal_entry_id, uuid.UUID(str(get_jwt().get("sub"))))
+        t.status = "posted"
+        db.session.commit()
+    except AccountingError as exc:
+        return _err(exc)
+    return jsonify({"data": {"id": str(t.id), "status": "posted",
+                             "official_number": e.official_number}})
 
 
 @bp.post("/bank-statements/import")
@@ -381,3 +450,80 @@ def reconcile_statement(st_id):
     except AccountingError as exc:
         return _err(exc)
     return jsonify({"data": result})
+
+
+# ------------------------------------------------------------- bank reconciliations
+
+@bp.get("/bank-reconciliations")
+@jwt_required()
+def list_reconciliations():
+    from ...models.addons import BankReconciliation
+    rows = db.session.query(BankReconciliation).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(BankReconciliation.reconciled_on.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(r.id), "matched_count": r.matched_count,
+                              "reconciled_on": r.reconciled_on.isoformat(),
+                              "status": r.status} for r in rows]})
+
+
+@bp.get("/bank-reconciliations/<uuid:r_id>")
+@jwt_required()
+def get_reconciliation(r_id):
+    from ...models.addons import BankReconciliation
+    r = db.session.get(BankReconciliation, r_id)
+    if r is None or r.is_deleted or str(r.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    return jsonify({"data": {"id": str(r.id), "matched_count": r.matched_count,
+                             "reconciled_on": r.reconciled_on.isoformat(),
+                             "status": r.status,
+                             "lines": [{"id": str(l.id),
+                                        "statement_line_id": str(l.statement_line_id),
+                                        "entry_id": str(l.entry_id) if l.entry_id else None}
+                                       for l in r.lines if not l.is_deleted]}})
+
+
+# ------------------------------------------------------------- check books
+
+@bp.get("/check-books")
+@jwt_required()
+def list_check_books():
+    from ...models.addons import CheckBook
+    rows = db.session.query(CheckBook).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(CheckBook.code).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(c.id), "code": c.code,
+                              "start_no": c.start_no, "end_no": c.end_no,
+                              "status": c.status} for c in rows]})
+
+
+@bp.post("/check-books")
+@jwt_required()
+def create_check_book():
+    denied = _deny("treasury.manage")
+    if denied:
+        return denied
+    from ...models.addons import CheckBook
+    data = request.get_json(force=True)
+    cb = CheckBook(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=uuid.UUID(str(data["entity_id"])),
+        bank_account_id=uuid.UUID(str(data["bank_account_id"])),
+        code=data["code"], start_no=data["start_no"], end_no=data["end_no"],
+        status="active",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(cb)
+    db.session.commit()
+    return jsonify({"data": {"id": str(cb.id), "code": cb.code}}), 201
+
+
+@bp.get("/check-books/<uuid:cb_id>")
+@jwt_required()
+def get_check_book(cb_id):
+    from ...models.addons import CheckBook
+    cb = db.session.get(CheckBook, cb_id)
+    if cb is None or cb.is_deleted or str(cb.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    return jsonify({"data": {"id": str(cb.id), "code": cb.code,
+                             "start_no": cb.start_no, "end_no": cb.end_no,
+                             "status": cb.status}})

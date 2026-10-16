@@ -1,12 +1,13 @@
-"""Business-layer verification: FX, approvals, schedules, portal, export, status, import."""
+﻿"""Business-layer verification: FX, approvals, schedules, portal, export, status, import."""
 import io
 import json
 import urllib.request
 import urllib.error
 
-BASE = "http://127.0.0.1:5000"
-TID = "b39787b5-52fb-4fb0-b41f-98b90b5853d6"
-EID = "f50db4a1-9381-400d-954b-79c515667f74"
+import os as _os
+BASE = "http://127.0.0.1:" + _os.getenv("BASE_PORT", "5000")
+from _ids import TID, EID  # noqa: E402
+
 
 
 def call(method, path, token=None, body="__none__", raw=None):
@@ -35,6 +36,8 @@ def call(method, path, token=None, body="__none__", raw=None):
             return e.code, json.loads(body_r) if body_r else {}
         except Exception:
             return e.code, {"raw": body_r[:120]}
+    except Exception as e:  # noqa: BLE001 - connection reset / refused
+        return 0, {"conn_error": repr(e)[:120]}
 
 
 def login(u, p):

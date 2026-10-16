@@ -2,13 +2,15 @@
 from __future__ import annotations
 import uuid
 from datetime import date
+from decimal import Decimal
 from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required, get_jwt
 from ...extensions import db
 from ...models.asset import Asset, AssetCategory
+from ...models.account import Account
 from ...models.treasury import Currency, Tax
 from ...services import posting_service
-from ...services.errors import AccountingError
+from ...services.errors import AccountingError, DuplicateEventError
 
 bp = Blueprint("assets", __name__)
 PAGE = 50
@@ -62,6 +64,17 @@ def create_tax():
     db.session.add(t)
     db.session.commit()
     return jsonify({"data": {"id": str(t.id)}}), 201
+
+
+@bp.get("/taxes/<uuid:tax_id>")
+@jwt_required()
+def get_tax(tax_id):
+    t = db.session.get(Tax, tax_id)
+    if t is None or t.is_deleted or str(t.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    return jsonify({"data": {"id": str(t.id), "code": t.code, "name_ar": t.name_ar,
+                             "rate": float(t.rate), "tax_type": t.tax_type,
+                             "is_active": t.is_active, "status": "active"}})
 
 
 @bp.get("/asset-categories")
@@ -135,6 +148,85 @@ def asset_detail(asset_id):
                              "status": a.status}})
 
 
+@bp.post("/assets/depreciate-run")
+@jwt_required()
+def depreciate_run():
+    """إهلاك جماعي شهري: يرحّل قسطًا لكل أصل نشط (يتجاوز المرحّل/المستبعد، idempotent لكل أصل+تاريخ)."""
+    denied = _deny("treasury.manage")
+    if denied:
+        return denied
+    data = request.get_json(force=True)
+    me = uuid.UUID(str(get_jwt().get("sub")))
+    entity_id = uuid.UUID(str(data["entity_id"]))
+    posting_date = data.get("posting_date", str(date.today()))
+    exp_acc = uuid.UUID(str(data["expense_account_id"]))
+    acc_acc = uuid.UUID(str(data["accum_account_id"]))
+    # تقييد حسابات الإهلاك: مصروف 5130 + مجمع 1519
+    from ...models.account import Account as _Acct
+    _exp = db.session.get(_Acct, exp_acc)
+    _acc = db.session.get(_Acct, acc_acc)
+    if _exp is None or _exp.code != "5130":
+        return jsonify({"error": {"code": "BAD_DEPR_ACCOUNT",
+                                  "message": "expense_account_id must be account 5130 (Depreciation)"}}), 422
+    if _acc is None or _acc.code != "1519":
+        return jsonify({"error": {"code": "BAD_DEPR_ACCOUNT",
+                                  "message": "accum_account_id must be account 1519 (Accumulated depreciation)"}}), 422
+    from ...models.journal import Journal as _J
+    journal = db.session.query(_J).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), entity_id=entity_id,
+        code="GEN", is_deleted=False).first()
+    if journal is None:
+        return jsonify({"error": {"code": "NOT_CONFIGURED", "message": "Journal GEN missing"}}), 409
+    assets = db.session.query(Asset).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), entity_id=entity_id,
+        is_deleted=False, status="active").all()
+    from ...services import event_service
+    done, skipped, failed = [], [], []
+    for a in assets:
+        # فحص مسبق: الخدمات الداخلية تُتمم المعاملة (commit) فلا تُستخدم savepoints هنا؛
+        # كل أصل يُرحّل ويُحفظ مستقلًا، والفشل يتراجع عن الأصل الحالي فقط.
+        key = f"asset.depr.{a.id}.{posting_date}"
+        try:
+            if event_service.get_by_key(tenant_id=a.tenant_id, entity_id=a.entity_id, event_key=key):
+                skipped.append({"asset_id": str(a.id), "code": a.code, "reason": "ALREADY_RUN"})
+                continue
+            cat = db.session.get(AssetCategory, a.category_id)
+            months = (cat.useful_life_years if cat else 5) * 12
+            book = float(a.acquisition_cost) - float(a.accumulated_depreciation) - float(a.residual_value)
+            method = data.get("method", (cat.depreciation_method if cat else "straight_line"))
+            if method == "declining":
+                amount = round(max(0.0, book) * round(2 / months, 6), 3)
+            else:
+                amount = round((float(a.acquisition_cost) - float(a.residual_value)) / months, 3)
+            amount = min(amount, round(max(0.0, book), 3))
+            if amount <= 0:
+                skipped.append({"asset_id": str(a.id), "code": a.code, "reason": "FULLY_DEPRECIATED"})
+                continue
+            entry = posting_service.create_entry(
+                {"tenant_id": a.tenant_id, "entity_id": a.entity_id, "journal_id": journal.id,
+                 "entry_type": "depreciation",
+                 "document_date": date.fromisoformat(posting_date),
+                 "posting_date": date.fromisoformat(posting_date),
+                 "description": f"إهلاك {a.code}", "source_module": "assets",
+                 "source_document_id": a.id, "source_event_key": key},
+                [{"account_id": exp_acc, "debit": amount, "credit": 0},
+                 {"account_id": acc_acc, "debit": 0, "credit": amount}],
+                actor_id=me)
+            entry = posting_service.post_entry(entry.id, me)
+            a.accumulated_depreciation = float(a.accumulated_depreciation) + amount
+            if a.accumulated_depreciation >= float(a.acquisition_cost) - float(a.residual_value) - 0.001:
+                a.status = "fully_depreciated"
+            db.session.commit()
+            done.append({"asset_id": str(a.id), "code": a.code, "amount": amount})
+        except DuplicateEventError:
+            db.session.rollback()
+            skipped.append({"asset_id": str(a.id), "code": a.code, "reason": "ALREADY_RUN"})
+        except AccountingError as exc:
+            db.session.rollback()
+            failed.append({"asset_id": str(a.id), "code": a.code, "reason": exc.code})
+    return jsonify({"data": {"posted": done, "skipped": skipped, "failed": failed}}), 201
+
+
 @bp.post("/assets/<uuid:asset_id>/depreciate")
 @jwt_required()
 def depreciate(asset_id):
@@ -160,10 +252,22 @@ def depreciate(asset_id):
     amount = min(amount, round(remaining, 3))
     if amount <= 0:
         return jsonify({"error": {"code": "FULLY_DEPRECIATED"}}), 409
+    # تقييد حسابات الإهلاك: مصروف 5130 + مجمع 1519
+    from ...models.account import Account as _Acct2
+    _exp2 = db.session.get(_Acct2, uuid.UUID(str(data["expense_account_id"])))
+    _acc2 = db.session.get(_Acct2, uuid.UUID(str(data["accum_account_id"])))
+    if _exp2 is None or _exp2.code != "5130":
+        return jsonify({"error": {"code": "BAD_DEPR_ACCOUNT",
+                                  "message": "expense_account_id must be account 5130 (Depreciation)"}}), 422
+    if _acc2 is None or _acc2.code != "1519":
+        return jsonify({"error": {"code": "BAD_DEPR_ACCOUNT",
+                                  "message": "accum_account_id must be account 1519 (Accumulated depreciation)"}}), 422
     try:
         from ...models.journal import Journal
         journal = db.session.query(Journal).filter_by(
             tenant_id=a.tenant_id, entity_id=a.entity_id, code="GEN", is_deleted=False).first()
+        if journal is None:
+            return jsonify({"error": {"code": "NOT_CONFIGURED", "message": "Journal GEN missing"}}), 409
         entry = posting_service.create_entry(
             {"tenant_id": a.tenant_id, "entity_id": a.entity_id, "journal_id": journal.id,
              "entry_type": "depreciation",
@@ -247,7 +351,9 @@ def list_tax_returns():
         tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
     ).order_by(TaxReturn.period_code.desc()).limit(PAGE).all()
     return jsonify({"data": [{"id": str(r.id), "period_code": r.period_code,
-                              "tax_due": float(r.tax_due), "status": r.status} for r in rows]})
+                              "tax_due": float(r.tax_due),
+                              "net_due": float(r.net_due or 0),
+                              "status": r.status} for r in rows]})
 
 
 @bp.post("/tax-returns/file")
@@ -266,7 +372,13 @@ def file_tax_return():
     except AccountingError as exc:
         return _err(exc)
     return jsonify({"data": {"id": str(ret.id), "period_code": ret.period_code,
-                             "tax_due": float(ret.tax_due), "status": ret.status}}), 201
+                             "sales_total": float(ret.sales_total or 0),
+                             "purchase_total": float(ret.purchase_total or 0),
+                             "output_tax": float(ret.output_tax or 0),
+                             "input_tax": float(ret.input_tax or 0),
+                             "tax_due": float(ret.tax_due),
+                             "net_due": float(ret.net_due or 0),
+                             "status": ret.status}}), 201
 
 
 @bp.get("/recurring-entries")
@@ -313,3 +425,406 @@ def run_recurring():
     ran = ops_service.run_due_recurring(
         tenant_id=g.tenant_id, actor_id=uuid.UUID(str(get_jwt().get("sub"))))
     return jsonify({"data": {"ran_entries": ran}})
+
+
+# ------------------------------------------------------------- asset transfers/disposals/revaluations
+
+@bp.get("/asset-transfers")
+@jwt_required()
+def list_transfers():
+    from ...models.addons import AssetTransfer
+    rows = db.session.query(AssetTransfer).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(AssetTransfer.transfer_date.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(t.id), "asset_id": str(t.asset_id),
+                              "transfer_date": t.transfer_date.isoformat(),
+                              "to_text": t.to_text, "status": t.status} for t in rows]})
+
+
+@bp.post("/asset-transfers")
+@jwt_required()
+def create_transfer():
+    denied = _deny("assets.manage")
+    if denied:
+        return denied
+    from ...models.addons import AssetTransfer
+    data = request.get_json(force=True)
+    t = AssetTransfer(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=uuid.UUID(str(data["entity_id"])),
+        asset_id=uuid.UUID(str(data["asset_id"])),
+        transfer_date=date.fromisoformat(data["transfer_date"]) if data.get("transfer_date") else date.today(),
+        from_text=data.get("from_text"), to_text=data["to_text"],
+        reason=data.get("reason"), status="posted",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({"data": {"id": str(t.id)}}), 201
+
+
+@bp.get("/asset-disposals")
+@jwt_required()
+def list_disposals():
+    from ...models.addons import AssetDisposal
+    rows = db.session.query(AssetDisposal).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(AssetDisposal.disposal_date.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(d.id), "asset_id": str(d.asset_id),
+                              "disposal_date": d.disposal_date.isoformat(),
+                              "proceeds": float(d.proceeds),
+                              "gain_loss": float(d.gain_loss),
+                              "status": d.status} for d in rows]})
+
+
+@bp.post("/asset-disposals")
+@jwt_required()
+def create_disposal():
+    denied = _deny("assets.manage")
+    if denied:
+        return denied
+    from ...models.addons import AssetDisposal
+    from ...models.asset import Asset
+    data = request.get_json(force=True)
+    asset = db.session.get(Asset, uuid.UUID(str(data["asset_id"])))
+    if asset is None or asset.is_deleted:
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    proceeds = Decimal(str(data.get("proceeds", 0)))
+    gain_loss = proceeds - (asset.acquisition_cost - asset.accumulated_depreciation)
+    d = AssetDisposal(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=asset.entity_id,
+        asset_id=asset.id,
+        disposal_date=date.fromisoformat(data["disposal_date"]) if data.get("disposal_date") else date.today(),
+        proceeds=float(proceeds), gain_loss=float(gain_loss),
+        status="posted",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(d)
+    db.session.commit()
+    return jsonify({"data": {"id": str(d.id), "gain_loss": float(gain_loss)}}), 201
+
+
+@bp.get("/asset-revaluations")
+@jwt_required()
+def list_revaluations():
+    from ...models.addons import AssetRevaluation
+    rows = db.session.query(AssetRevaluation).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(AssetRevaluation.reval_date.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(r.id), "asset_id": str(r.asset_id),
+                              "reval_date": r.reval_date.isoformat(),
+                              "old_cost": float(r.old_cost),
+                              "new_cost": float(r.new_cost),
+                              "status": r.status} for r in rows]})
+
+
+@bp.post("/asset-revaluations")
+@jwt_required()
+def create_revaluation():
+    denied = _deny("assets.manage")
+    if denied:
+        return denied
+    from ...models.addons import AssetRevaluation
+    from ...models.asset import Asset
+    data = request.get_json(force=True)
+    asset = db.session.get(Asset, uuid.UUID(str(data["asset_id"])))
+    if asset is None or asset.is_deleted:
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    new_cost = Decimal(str(data["new_cost"]))
+    old_cost = Decimal(str(asset.acquisition_cost))
+    diff = (new_cost - old_cost).quantize(Decimal("0.001"))
+    r = AssetRevaluation(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=asset.entity_id,
+        asset_id=asset.id,
+        reval_date=date.fromisoformat(data["reval_date"]) if data.get("reval_date") else date.today(),
+        old_cost=float(old_cost), new_cost=float(new_cost),
+        status="posted",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(r)
+    # قيد إعادة التقييم: فرق التكلفة يُرحَّل
+    if abs(diff) >= Decimal("0.001"):
+        try:
+            from ...models.journal import Journal as _JR
+            from ...models.account import Account as _AC
+            journal = db.session.query(_JR).filter_by(
+                tenant_id=uuid.UUID(str(g.tenant_id)), entity_id=asset.entity_id,
+                code="GEN", is_deleted=False).first()
+            asset_acc = db.session.query(_AC).filter_by(
+                entity_id=asset.entity_id, code=asset.account_code, is_deleted=False).first() \
+                if hasattr(asset, "account_code") else None
+            if asset_acc is None:
+                # بديل: حساب أصل ثابت 1510
+                asset_acc = db.session.query(_AC).filter_by(
+                    entity_id=asset.entity_id, code="1510", is_deleted=False).first()
+            # حساب الفرق: تسوية أصول (5590) أو إيراد/مصروف
+            gain_acc = db.session.query(_AC).filter_by(
+                entity_id=asset.entity_id, code="4095", is_deleted=False).first()
+            if journal and asset_acc and gain_acc:
+                if diff > 0:
+                    lines = [{"account_id": asset_acc.id, "debit": float(diff), "credit": 0},
+                             {"account_id": gain_acc.id, "debit": 0, "credit": float(diff)}]
+                else:
+                    lines = [{"account_id": gain_acc.id, "debit": float(-diff), "credit": 0},
+                             {"account_id": asset_acc.id, "debit": 0, "credit": float(-diff)}]
+                entry = posting_service.create_entry(
+                    {"tenant_id": uuid.UUID(str(g.tenant_id)), "entity_id": asset.entity_id,
+                     "journal_id": journal.id, "entry_type": "revaluation",
+                     "document_date": r.reval_date, "posting_date": r.reval_date,
+                     "description": f"إعادة تقييم أصل {asset.code}",
+                     "source_module": "assets", "source_document_id": asset.id,
+                     "source_event_key": f"asset.reval.{asset.id}.{r.reval_date.isoformat()}.v1"},
+                    lines, actor_id=uuid.UUID(str(get_jwt().get("sub"))))
+                posting_service.post_entry(entry.id, uuid.UUID(str(get_jwt().get("sub"))))
+                r.journal_entry_id = entry.id
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("revaluation GL failed for asset %s", asset.code, exc_info=True)
+    asset.acquisition_cost = new_cost
+    db.session.commit()
+    return jsonify({"data": {"id": str(r.id)}}), 201
+
+
+# ------------------------------------------------------------- tax groups/rates/payments
+
+@bp.get("/tax-groups")
+@jwt_required()
+def list_tax_groups():
+    from ...models.addons import TaxGroup
+    rows = db.session.query(TaxGroup).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(TaxGroup.code).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(tg.id), "code": tg.code,
+                              "name_ar": tg.name_ar, "is_active": tg.is_active} for tg in rows]})
+
+
+@bp.post("/tax-groups")
+@jwt_required()
+def create_tax_group():
+    denied = _deny("treasury.manage")
+    if denied:
+        return denied
+    from ...models.addons import TaxGroup
+    data = request.get_json(force=True)
+    tg = TaxGroup(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=uuid.UUID(str(data["entity_id"])),
+        code=data["code"], name_ar=data["name_ar"], is_active=True,
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(tg)
+    db.session.commit()
+    return jsonify({"data": {"id": str(tg.id), "code": tg.code}}), 201
+
+
+@bp.get("/tax-payments")
+@jwt_required()
+def list_tax_payments():
+    from ...models.addons import TaxPayment
+    rows = db.session.query(TaxPayment).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(TaxPayment.pay_date.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(tp.id), "tax_id": str(tp.tax_id),
+                              "pay_date": tp.pay_date.isoformat(),
+                              "amount": float(tp.amount), "status": tp.status} for tp in rows]})
+
+
+@bp.post("/tax-payments")
+@jwt_required()
+def create_tax_payment():
+    denied = _deny("treasury.manage")
+    if denied:
+        return denied
+    from ...models.addons import TaxPayment
+    data = request.get_json(force=True)
+    tp = TaxPayment(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=uuid.UUID(str(data["entity_id"])),
+        tax_id=uuid.UUID(str(data["tax_id"])),
+        pay_date=date.fromisoformat(data["pay_date"]) if data.get("pay_date") else date.today(),
+        amount=data["amount"], period_code=data.get("period_code"),
+        status="draft",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(tp)
+    db.session.commit()
+    return jsonify({"data": {"id": str(tp.id)}}), 201
+
+
+@bp.get("/withholding-taxes")
+@jwt_required()
+def list_withholding():
+    from ...models.addons import WithholdingTax
+    rows = db.session.query(WithholdingTax).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(WithholdingTax.created_at.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(w.id), "party_id": str(w.party_id),
+                              "base_amount": float(w.base_amount),
+                              "rate": float(w.rate), "amount": float(w.amount),
+                              "status": w.status} for w in rows]})
+
+
+@bp.post("/withholding-taxes")
+@jwt_required()
+def create_withholding():
+    denied = _deny("treasury.manage")
+    if denied:
+        return denied
+    from ...models.addons import WithholdingTax
+    data = request.get_json(force=True)
+    base = Decimal(str(data["base_amount"]))
+    rate = Decimal(str(data["rate"]))
+    amount = (base * rate / 100).quantize(Decimal("0.001"))
+    w = WithholdingTax(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        entity_id=uuid.UUID(str(data["entity_id"])),
+        party_id=uuid.UUID(str(data["party_id"])),
+        base_amount=float(base), rate=float(rate), amount=float(amount),
+        doc_ref=data.get("doc_ref"), status="draft",
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(w)
+    db.session.commit()
+    return jsonify({"data": {"id": str(w.id), "amount": float(amount)}}), 201
+
+
+# ------------------------------------------------------------- tax rates (indexed)
+
+@bp.get("/tax-rates")
+@jwt_required()
+def list_tax_rates():
+    from ...models.addons import TaxRate
+    q = db.session.query(TaxRate).filter_by(is_deleted=False)
+    if request.args.get("group_id"):
+        q = q.filter_by(group_id=uuid.UUID(request.args["group_id"]))
+    rows = q.order_by(TaxRate.valid_from.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(tr.id), "group_id": str(tr.group_id),
+                              "tax_id": str(tr.tax_id),
+                              "valid_from": tr.valid_from.isoformat(),
+                              "valid_to": tr.valid_to.isoformat() if tr.valid_to else None}
+                             for tr in rows]})
+
+
+@bp.post("/tax-rates")
+@jwt_required()
+def create_tax_rate():
+    denied = _deny("treasury.manage")
+    if denied:
+        return denied
+    from ...models.addons import TaxRate
+    data = request.get_json(force=True)
+    tr = TaxRate(
+        tenant_id=uuid.UUID(str(g.tenant_id)),
+        group_id=uuid.UUID(str(data["group_id"])),
+        tax_id=uuid.UUID(str(data["tax_id"])),
+        valid_from=date.fromisoformat(data["valid_from"]),
+        valid_to=date.fromisoformat(data["valid_to"]) if data.get("valid_to") else None,
+        created_by=uuid.UUID(str(get_jwt().get("sub"))),
+        updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    db.session.add(tr)
+    db.session.commit()
+    return jsonify({"data": {"id": str(tr.id)}}), 201
+
+
+# ------------------------------------------------------------- asset depreciation schedules
+
+@bp.get("/asset-depreciation-schedules")
+@jwt_required()
+def list_dep_schedules():
+    from ...models.addons import AssetDepreciationSchedule
+    q = db.session.query(AssetDepreciationSchedule).filter_by(is_deleted=False)
+    if request.args.get("asset_id"):
+        q = q.filter_by(asset_id=uuid.UUID(request.args["asset_id"]))
+    rows = q.order_by(AssetDepreciationSchedule.period_no).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(s.id), "asset_id": str(s.asset_id),
+                              "period_no": s.period_no,
+                              "due_on": s.due_on.isoformat(),
+                              "amount": float(s.amount),
+                              "status": s.status} for s in rows]})
+
+
+@bp.post("/asset-depreciation-schedules")
+@jwt_required()
+def generate_dep_schedule():
+    denied = _deny("assets.manage")
+    if denied:
+        return denied
+    from ...models.addons import AssetDepreciationSchedule
+    from ...models.asset import Asset, AssetCategory
+    from dateutil.relativedelta import relativedelta
+    data = request.get_json(force=True)
+    asset = db.session.get(Asset, uuid.UUID(str(data["asset_id"])))
+    if asset is None or asset.is_deleted:
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    existing = db.session.query(AssetDepreciationSchedule).filter_by(
+        asset_id=asset.id, is_deleted=False).count()
+    if existing:
+        return jsonify({"error": {"code": "DUPLICATE",
+                                  "message": "schedule already exists"}}), 409
+    cat = db.session.get(AssetCategory, asset.category_id)
+    years = int(cat.useful_life_years) if cat else 5
+    depreciable = (Decimal(str(asset.acquisition_cost))
+                   - Decimal(str(asset.residual_value)))
+    yearly = (depreciable / years).quantize(Decimal("0.001"))
+    me = uuid.UUID(str(get_jwt().get("sub")))
+    for i in range(1, years + 1):
+        amt = yearly if i < years else (depreciable - yearly * (years - 1))
+        db.session.add(AssetDepreciationSchedule(
+            tenant_id=uuid.UUID(str(g.tenant_id)),
+            asset_id=asset.id, period_no=i,
+            due_on=asset.acquisition_date + relativedelta(years=i),
+            amount=float(amt), status="pending",
+            created_by=me, updated_by=me))
+    db.session.commit()
+    return jsonify({"data": {"asset_id": str(asset.id), "periods": years}}), 201
+
+
+@bp.post("/asset-depreciation-schedules/<uuid:sid>/post")
+@jwt_required()
+def post_dep_schedule(sid):
+    denied = _deny("assets.manage")
+    if denied:
+        return denied
+    from ...models.addons import AssetDepreciationSchedule
+    from ...models.asset import Asset
+    from ...models.journal import Journal
+    from ...services import posting_service
+    s = db.session.get(AssetDepreciationSchedule, sid)
+    if s is None or s.is_deleted:
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    if s.status == "posted":
+        return jsonify({"data": {"id": str(s.id), "status": s.status}})
+    asset = db.session.get(Asset, s.asset_id)
+    exp_acc = db.session.query(Account).filter_by(
+        entity_id=asset.entity_id, code="5130", is_deleted=False).first()
+    accum_acc = db.session.query(Account).filter_by(
+        entity_id=asset.entity_id, code="1519", is_deleted=False).first()
+    if exp_acc is None or accum_acc is None:
+        return jsonify({"error": {"code": "NO_ACCOUNT",
+                                  "message": "5130/1519 not configured"}}), 422
+    journal = db.session.query(Journal).filter_by(
+        entity_id=asset.entity_id, code="GEN", is_deleted=False).first()
+    if journal is None:
+        return jsonify({"error": {"code": "NO_JOURNAL"}}), 422
+    me = uuid.UUID(str(get_jwt().get("sub")))
+    entry = posting_service.create_entry(
+        {"tenant_id": s.tenant_id, "entity_id": asset.entity_id,
+         "journal_id": journal.id, "entry_type": "source",
+         "document_date": s.due_on, "posting_date": s.due_on,
+         "description": f"إهلاك {asset.code} قسط {s.period_no}",
+         "source_module": "assets", "source_document_id": s.id,
+         "source_event_key": f"assets.dep.{s.id}.v1",
+         "currency_id": "JOD", "exchange_rate": 1},
+        [{"account_id": exp_acc.id, "debit": float(s.amount), "credit": 0},
+         {"account_id": accum_acc.id, "debit": 0, "credit": float(s.amount)}],
+        actor_id=me)
+    entry = posting_service.post_entry(entry.id, me)
+    s.entry_id = entry.id
+    s.status = "posted"
+    asset.accumulated_depreciation = float(
+        asset.accumulated_depreciation) + float(s.amount)
+    db.session.commit()
+    return jsonify({"data": {"id": str(s.id), "status": s.status,
+                             "entry_id": str(entry.id)}})

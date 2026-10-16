@@ -41,16 +41,21 @@ def detail(a_id):
 
 @bp_assets.get("/depreciation")
 def depreciation():
-    return render_template("assets/detail.html", **h.ctx(
-        "الإهلاك", [("الأصول", url_for("web_assets.list")), ("الإهلاك", None)], active="assets-d",
-        actions=[],
-        sections=[{"title": "الجدول", "rows": [("التنبيه", "اختر الأصل من القائمة ثم نفذ الإهلاك من صفحة التفاصيل مع حسابات المصروف والمجمع")]}]))
+    return render_template("assets/form.html", **h.ctx(
+        "الإهلاك الجماعي الشهري", [("الأصول", url_for("web_assets.list")), ("الإهلاك", None)], active="assets-d",
+        api_post="/api/v1/assets/depreciate-run", redirect_url="/assets",
+        fields=[{"name": "entity_id", "label": "الكيان", "type": "select", "source": "entities", "required": True},
+                {"name": "posting_date", "label": "تاريخ الترحيل", "type": "date", "required": True},
+                {"name": "expense_account_id", "label": "حساب المصروف", "type": "select", "source": "accounts", "required": True},
+                {"name": "accum_account_id", "label": "حساب مجمع الإهلاك", "type": "select", "source": "accounts", "required": True}],
+        submit="ترحيل الإهلاك الجماعي",
+        cancel_url=url_for("web_assets.list")))
 
 
 @bp_assets.post("/depreciation/run")
 def run_depreciation():
-    # لا يوجد إهلاك جماعي بدون حسابات — الترحيل الفعلي من صفحة الأصل عبر API.
-    flash("حدد الأصل وحسابات الإهلاك — لم يُرحّل شيء", "error")
+    # الترحيل الفعلي عبر نموذج الإهلاك الجماعي (API) أعلاه.
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_assets.depreciation"))
 
 
@@ -71,7 +76,7 @@ def disposal(a_id):
 
 @bp_assets.post("/<uuid:a_id>/disposal")
 def do_disposal(a_id):
-    flash("استخدم نموذج الاستبعاد — التنفيذ عبر API فقط", "error")
+    # Legacy route: the real action runs against the API (api_post / api button).
     return redirect(url_for("web_assets.detail", a_id=a_id))
 
 
@@ -99,11 +104,12 @@ def new():
         cancel_url=url_for("web_taxes.list")))
 
 
-@bp_taxes.get("/<t_id>")
+@bp_taxes.get("/<uuid:t_id>")
 def detail(t_id):
     return render_template("taxes/detail.html", **h.ctx(
         "تفاصيل الضريبة", [("الضرائب", url_for("web_taxes.list")), ("التفاصيل", None)], active="taxes",
-        sections=[{"title": "البيانات", "rows": [("الرمز", t_id)]}]))
+        doc_kind="tax", doc_id=t_id,
+        sections=[]))
 
 
 @bp_taxes.get("/returns")

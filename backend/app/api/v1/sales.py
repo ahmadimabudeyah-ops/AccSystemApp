@@ -87,7 +87,15 @@ def get_invoice(inv_id):
     if inv is None or inv.is_deleted or str(inv.tenant_id) != str(g.tenant_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     d = _dump_inv(inv)
-    d["lines"] = [{"line_number": l.line_number, "product_id": str(l.product_id),
+    pids = {l.product_id for l in inv.lines if not l.is_deleted and l.product_id}
+    pmap = {}
+    if pids:
+        from ...models.product import Product
+        for p in db.session.query(Product).filter(Product.id.in_(pids)).all():
+            pmap[str(p.id)] = {"code": p.code, "name_ar": p.name_ar}
+    d["lines"] = [{"line_number": l.line_number, "product_id": str(l.product_id) if l.product_id else None,
+                   "product_code": (pmap.get(str(l.product_id)) or {}).get("code"),
+                   "product_name": (pmap.get(str(l.product_id)) or {}).get("name_ar"),
                    "description": l.description, "qty": float(l.qty),
                    "unit_price": float(l.unit_price), "line_total": float(l.line_total)}
                   for l in inv.lines if not l.is_deleted]
@@ -104,7 +112,10 @@ def post_invoice(inv_id):
         inv = sales_service.post_invoice(inv_id, actor_id=uuid.UUID(str(get_jwt().get("sub"))))
     except AccountingError as exc:
         return _err(exc)
-    return jsonify({"data": _dump_inv(inv)})
+    d = _dump_inv(inv)
+    if getattr(inv, "stock_warnings", None):
+        d["stock_warnings"] = inv.stock_warnings
+    return jsonify({"data": d})
 
 
 @bp.get("/payments")
@@ -145,6 +156,23 @@ def create_payment():
         return _err(exc)
     return jsonify({"data": {"id": str(pay.id), "doc_number": pay.doc_number,
                              "status": pay.status}}), 201
+
+
+@bp.get("/payments/<uuid:pay_id>")
+@jwt_required()
+def get_payment(pay_id):
+    pay = db.session.get(CustomerPayment, pay_id)
+    if pay is None or pay.is_deleted or str(pay.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    from ...models.party import Party as _Party2
+    cust = db.session.get(_Party2, pay.customer_id)
+    return jsonify({"data": {"id": str(pay.id), "doc_number": pay.doc_number,
+                             "code": pay.doc_number,
+                             "customer_name": cust.name_ar if cust else "?",
+                             "amount": float(pay.amount),
+                             "allocated_amount": float(pay.allocated_amount),
+                             "unallocated_amount": float(pay.unallocated_amount),
+                             "status": pay.status}})
 
 
 @bp.post("/payments/<uuid:pay_id>/post")
@@ -261,14 +289,24 @@ def get_credit_note(note_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     from ...models.party import Party
     cust = db.session.get(Party, note.customer_id)
+    pids = {l.product_id for l in note.lines if not l.is_deleted and l.product_id}
+    pmap = {}
+    if pids:
+        from ...models.product import Product as _Prod
+        for p in db.session.query(_Prod).filter(_Prod.id.in_(pids)).all():
+            pmap[str(p.id)] = {"code": p.code, "name_ar": p.name_ar}
     return jsonify({"data": {"id": str(note.id), "doc_number": note.doc_number,
                              "customer_id": str(note.customer_id),
                              "customer_name": cust.name_ar if cust else "?",
                              "subtotal": float(note.subtotal),
                              "tax_total": float(note.tax_total),
                              "grand_total": float(note.grand_total), "status": note.status,
-                             "lines": [{"description": l.description,
+                             "lines": [{"product_id": str(l.product_id) if l.product_id else None,
+                                        "product_code": (pmap.get(str(l.product_id)) or {}).get("code"),
+                                        "product_name": (pmap.get(str(l.product_id)) or {}).get("name_ar"),
+                                        "description": (pmap.get(str(l.product_id)) or {}).get("name_ar"),
                                         "qty": float(l.qty), "unit_price": float(l.unit_price),
+                                        "discount_pct": float(l.discount_pct or 0),
                                         "line_total": float(l.line_total)}
                                        for l in note.lines if not l.is_deleted]}})
 
@@ -371,7 +409,9 @@ def reverse_invoice(inv_id):
             tenant_id=inv.tenant_id, entity_id=inv.entity_id, customer_id=inv.customer_id,
             invoice_id=inv.id, reason=f"عكس الفاتورة {inv.doc_number}",
             lines=[{"product_id": l.product_id, "qty": float(l.qty),
-                    "unit_price": float(l.unit_price)} for l in inv.lines if not l.is_deleted],
+                    "unit_price": float(l.unit_price),
+                    "discount_pct": float(l.discount_pct or 0),
+                    "tax_id": l.tax_id} for l in inv.lines if not l.is_deleted],
             actor_id=uuid.UUID(str(get_jwt().get("sub"))))
         note = credit_service.post_credit_note(note.id, actor_id=uuid.UUID(str(get_jwt().get("sub"))))
         inv.status = "reversed"
@@ -594,6 +634,83 @@ def invoice_from_order(o_id):
 @bp.post("/einvoicing/process")
 @jwt_required()
 def process_einvoicing():
+    denied = _deny("sales.manage")
+    if denied:
+        return denied
     from ...services import jofotara_service
     out = jofotara_service.process_queue(tenant_id=g.tenant_id)
     return jsonify({"data": {"processed": out}})
+
+
+# ------------------------------------------------------------- debit notes
+
+@bp.get("/debit-notes")
+@jwt_required()
+def list_debit_notes():
+    from ...models.addons import DebitNote
+    rows = db.session.query(DebitNote).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
+    ).order_by(DebitNote.note_date.desc()).limit(PAGE).all()
+    return jsonify({"data": [{"id": str(n.id), "doc_number": n.doc_number,
+                              "grand_total": float(n.grand_total),
+                              "status": n.status} for n in rows]})
+
+
+@bp.post("/debit-notes")
+@jwt_required()
+def create_debit_note():
+    denied = _deny()
+    if denied:
+        return denied
+    data = request.get_json(force=True)
+    try:
+        note = credit_service.create_debit_note(
+            tenant_id=g.tenant_id, entity_id=data["entity_id"], customer_id=data["customer_id"],
+            note_date=date.fromisoformat(data["note_date"]) if data.get("note_date") else None,
+            reason=data.get("reason", ""), currency_id=data.get("currency_id", "JOD"),
+            lines=data["lines"], actor_id=uuid.UUID(str(get_jwt().get("sub"))))
+    except AccountingError as exc:
+        return _err(exc)
+    return jsonify({"data": {"id": str(note.id), "doc_number": note.doc_number}}), 201
+
+
+@bp.get("/debit-notes/<uuid:note_id>")
+@jwt_required()
+def get_debit_note(note_id):
+    from ...models.addons import DebitNote
+    note = db.session.get(DebitNote, note_id)
+    if note is None or note.is_deleted or str(note.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    from ...models.party import Party
+    cust = db.session.get(Party, note.customer_id)
+    pids = {l.product_id for l in note.lines if not l.is_deleted and l.product_id}
+    pmap = {}
+    if pids:
+        for p in db.session.query(Product).filter(Product.id.in_(pids)).all():
+            pmap[str(p.id)] = {"code": p.code, "name_ar": p.name_ar}
+    return jsonify({"data": {"id": str(note.id), "doc_number": note.doc_number,
+                             "code": note.doc_number,
+                             "customer_name": cust.name_ar if cust else "?",
+                             "subtotal": float(note.subtotal),
+                             "tax_total": float(note.tax_total),
+                             "grand_total": float(note.grand_total), "status": note.status,
+                             "lines": [{"product_id": str(l.product_id) if l.product_id else None,
+                                        "product_code": (pmap.get(str(l.product_id)) or {}).get("code"),
+                                        "product_name": (pmap.get(str(l.product_id)) or {}).get("name_ar"),
+                                        "description": (pmap.get(str(l.product_id)) or {}).get("name_ar"),
+                                        "qty": float(l.qty), "unit_price": float(l.unit_price),
+                                        "line_total": float(l.line_total)}
+                                       for l in note.lines if not l.is_deleted]}})
+
+
+@bp.post("/debit-notes/<uuid:note_id>/post")
+@jwt_required()
+def post_debit_note(note_id):
+    denied = _deny()
+    if denied:
+        return denied
+    try:
+        note = credit_service.post_debit_note(note_id, actor_id=uuid.UUID(str(get_jwt().get("sub"))))
+    except AccountingError as exc:
+        return _err(exc)
+    return jsonify({"data": {"id": str(note.id), "status": note.status}})

@@ -15,7 +15,8 @@ def students():
     return render_template("education/list.html", **h.ctx(
         "الطلاب", [("التعليم", None), ("الطلاب", None)], active="edu-s",
         new_url=url_for("web_edu.new_student"), columns=STU_COLS, rows=[],
-        api_src="/api/v1/education/students", empty="لا طلاب"))
+        api_src="/api/v1/education/students", empty="لا طلاب",
+        row_actions=True, detail_base="/education/students"))
 
 
 @bp.get("/students/new")
@@ -57,4 +58,13 @@ def contract_detail(c_id):
         "تفاصيل العقد", [("التعليم", None), ("الرسوم", url_for("web_edu.contracts")), ("التفاصيل", None)],
         active="edu-f",
         doc_kind="fee_contract", doc_id=c_id,
+        sections=[]))
+
+
+@bp.get("/students/<uuid:s_id>")
+def student_detail(s_id):
+    return render_template("education/detail.html", **h.ctx(
+        "تفاصيل الطالب", [("التعليم", None), ("الطلاب", url_for("web_edu.students")), ("التفاصيل", None)],
+        active="edu-s",
+        doc_kind="student", doc_id=s_id,
         sections=[]))
