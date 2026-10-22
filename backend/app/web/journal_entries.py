@@ -39,7 +39,7 @@ def reverse(e_id):
         active="entries", api_post=f"/api/v1/journal-entries/{e_id}/reverse",
         redirect_url="/journal-entries",
         fields=[{"name": "reason", "label": "سبب العكس", "type": "textarea", "required": True},
-                {"name": "reversal_date", "label": "تاريخ العكس", "type": "date", "required": True}],
+                {"name": "reversal_date", "label": "تاريخ العكس (افتراضيًا اليوم)", "type": "date"}],
         submit="تنفيذ العكس", cancel_url=url_for("web_entries.detail", e_id=e_id)))
 
 
@@ -49,6 +49,5 @@ def approve(e_id):
         "اعتماد قيد", [("المحاسبة", None), ("القيود", url_for("web_entries.list")), ("اعتماد", None)],
         active="entries", api_post=f"/api/v1/journal-entries/{e_id}/approve",
         redirect_url=f"/journal-entries/{e_id}",
-        fields=[{"name": "approver_id", "label": "معرف المعتمد", "required": True, "ltr": True},
-                {"name": "reason", "label": "ملاحظة", "type": "textarea"}],
-        submit="اعتماد", cancel_url=url_for("web_entries.detail", e_id=e_id)))
+        fields=[{"name": "reason", "label": "ملاحظة الاعتماد (اختياري)", "type": "textarea"}],
+        submit="اعتماد الآن", cancel_url=url_for("web_entries.detail", e_id=e_id)))

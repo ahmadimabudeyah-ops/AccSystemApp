@@ -151,6 +151,13 @@ def create_entry(header: dict[str, Any], lines: list[dict],
         )
         db.session.add(entry)
         db.session.flush()
+        year_code = str(posting_date.year)
+        year = db.session.query(FiscalYear).filter_by(
+            entity_id=entity_id, code=year_code).first()
+        if year is not None:
+            entry.official_number = sequence_service.next_official_number(
+                tenant_id=tenant_id, entity_id=entity_id,
+                journal_id=entry.journal_id, fiscal_year_id=year.id)
         for i, l in enumerate(lines, 1):
             debit = Decimal(str(l.get("debit", 0)))
             credit = Decimal(str(l.get("credit", 0)))
@@ -188,7 +195,8 @@ def create_entry(header: dict[str, Any], lines: list[dict],
 
 
 def post_entry(entry_id: uuid.UUID, user_id: uuid.UUID,
-               expected_version: int | None = None) -> JournalEntry:
+               expected_version: int | None = None,
+               allow_self: bool = False) -> JournalEntry:
     """ترحيل القيد: رقم رسمي ذري + حالة POSTED + تدقيق. المرحّل خالد.
 
     فصل المهام: القيود *اليدوية* تتطلب مرحّلًا غير الصانع. القيود المولدة
@@ -204,8 +212,9 @@ def post_entry(entry_id: uuid.UUID, user_id: uuid.UUID,
         raise BadStateError(f"Cannot post from {entry.status}")
     if expected_version is not None and entry.version != expected_version:
         raise BadStateError("Entry was modified concurrently")
-    if entry.created_by == user_id and entry.source_module == "manual":
-        raise SelfApprovalError("Maker cannot post own entry")
+    if (not allow_self and entry.created_by == user_id
+            and entry.source_module == "manual"):
+        raise SelfApprovalError("لا يمكن لمنشئ القيد ترحيله — يلزم مستخدم آخر أو صلاحية مدير")
     # إعادة التحقق من الحسابات بتاريخ الترحيل: قد يتغير الحساب
     # (حالة/نشاط/قابلية/فترة) بين إنشاء المسودة والترحيل النهائي.
     validate_period(entry.entity_id, entry.posting_date)
@@ -217,13 +226,15 @@ def post_entry(entry_id: uuid.UUID, user_id: uuid.UUID,
         is_manual_entry=(entry.source_module == "manual"),
         posting_date=entry.posting_date)
 
-    year_code = str(entry.posting_date.year)
-    year = db.session.query(FiscalYear).filter_by(entity_id=entry.entity_id, code=year_code).first()
-    if year is None:
-        raise NotFoundError(f"Fiscal year {year_code} not found")
-    entry.official_number = sequence_service.next_official_number(
-        tenant_id=entry.tenant_id, entity_id=entry.entity_id,
-        journal_id=entry.journal_id, fiscal_year_id=year.id)
+    if not entry.official_number:
+        year_code = str(entry.posting_date.year)
+        year = db.session.query(FiscalYear).filter_by(
+            entity_id=entry.entity_id, code=year_code).first()
+        if year is None:
+            raise NotFoundError(f"Fiscal year {year_code} not found")
+        entry.official_number = sequence_service.next_official_number(
+            tenant_id=entry.tenant_id, entity_id=entry.entity_id,
+            journal_id=entry.journal_id, fiscal_year_id=year.id)
     entry.status = "posted"
     entry.status_changed_at = datetime.utcnow()
     entry.status_changed_by = user_id

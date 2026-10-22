@@ -235,7 +235,8 @@ def create_account():
     try:
         entity_id = uuid.UUID(str(data["entity_id"]))
         chart.ensure_entity_access(entity_id, g.tenant_id)
-        code = chart.validate_code(data.get("code"))
+        raw_code = str(data.get("code") or "").strip()
+        code = chart.validate_code(raw_code) if raw_code else None
         name_ar = str(data.get("name_ar", "")).strip()
         if not name_ar:
             raise ChartError("الاسم العربي مطلوب")
@@ -261,6 +262,9 @@ def create_account():
         chart.validate_parent(tenant_id=g.tenant_id, entity_id=entity_id,
                               parent=parent, wanted_role=role,
                               account_type=account_type)
+        if code is None:
+            code = chart.suggest_code(tenant_id=g.tenant_id, entity_id=entity_id,
+                                      parent=parent, role=role)
         is_postable = chart.coerce_postable(role, data.get("is_postable"))
         acc = Account(tenant_id=uuid.UUID(str(g.tenant_id)), entity_id=entity_id,
                       code=code, name_ar=name_ar, name_en=(data.get("name_en") or None),

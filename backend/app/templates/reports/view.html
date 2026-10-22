@@ -5,7 +5,14 @@
 <div class="card mb-3" id="report-filter" data-report="{{ report_name }}">
   <div class="row g-2 align-center">
     <div class="col-md-4"><label class="form-label">الفترة</label><select class="form-control" id="rep-period"><option value="">اختر…</option></select></div>
-    <div class="col-md-4" id="rep-account-wrap" hidden><label class="form-label">الحساب</label><select class="form-control" id="rep-account"></select></div>
+    <div class="col-md-3" id="rep-account-wrap" hidden><label class="form-label">الحساب</label><select class="form-control" id="rep-account"></select></div>
+    <div class="col-md-3" id="rep-dates-wrap" hidden>
+      <label class="form-label">من / إلى</label>
+      <div class="d-flex gap-1">
+        <input class="form-control ltr" type="date" id="rep-from" aria-label="من تاريخ">
+        <input class="form-control ltr" type="date" id="rep-to" aria-label="إلى تاريخ">
+      </div>
+    </div>
     <div class="col-md-4 d-flex align-center gap-2" style="margin-top:24px">
       <button class="btn btn-primary" onclick="loadReport()">عرض</button>
       <button class="btn btn-secondary" onclick="window.print()">طباعة</button>

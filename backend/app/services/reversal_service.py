@@ -118,13 +118,14 @@ def reverse_full(entry_id: uuid.UUID, *, reason: str, reversal_date: date,
     rev.reversal_of_id = original.id
     from . import sequence_service as _seq
     from ..models.entity import FiscalYear as _FY
-    _year = db.session.query(_FY).filter_by(
-        entity_id=original.entity_id, code=str(reversal_date.year)).first()
-    if _year is None:
-        raise NotFoundError(f"Fiscal year {reversal_date.year} not found")
-    rev.official_number = _seq.next_official_number(
-        tenant_id=original.tenant_id, entity_id=original.entity_id,
-        journal_id=original.journal_id, fiscal_year_id=_year.id)
+    if not rev.official_number:
+        _year = db.session.query(_FY).filter_by(
+            entity_id=original.entity_id, code=str(reversal_date.year)).first()
+        if _year is None:
+            raise NotFoundError(f"Fiscal year {reversal_date.year} not found")
+        rev.official_number = _seq.next_official_number(
+            tenant_id=original.tenant_id, entity_id=original.entity_id,
+            journal_id=original.journal_id, fiscal_year_id=_year.id)
     rev.status = "posted"
     from datetime import datetime
     rev.posted_by = actor_id

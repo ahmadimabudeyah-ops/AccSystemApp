@@ -5,8 +5,10 @@ from . import _helpers as h
 bp = Blueprint("web_parties", __name__, url_prefix="/parties")
 
 FIELDS = [
-    {"name": "code", "label": "الرمز", "required": True, "ltr": True},
+    {"name": "code", "label": "الرمز", "ltr": True, "help": "اتركه فارغًا للتوليد التلقائي"},
     {"name": "name_ar", "label": "الاسم", "required": True},
+    {"name": "party_type", "label": "نوع الطرف", "type": "select", "required": True,
+     "options": [("customer", "عميل"), ("supplier", "مورد"), ("both", "عميل ومورد")]},
     {"name": "credit_limit", "label": "الحد الائتماني", "type": "number", "ltr": True},
 ]
 

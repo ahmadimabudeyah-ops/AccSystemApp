@@ -158,6 +158,34 @@ def validate_code(code: str) -> str:
     return code
 
 
+def suggest_code(*, tenant_id, entity_id, parent: Account | None, role: str | None) -> str:
+    """توليد رمز تسلسلي داخل الأب: الأقسام 1,2,3… والأبناء <رمز الأب><رقم 2 خانة>."""
+    scope = "tenant_id = :t AND entity_id = :e AND is_deleted = FALSE"
+    params = {"t": str(tenant_id), "e": str(entity_id)}
+    if parent is None:
+        rows = db.session.execute(text(
+            f"SELECT code FROM accounts WHERE {scope} AND parent_id IS NULL "
+            "AND code ~ '^[0-9]+$'"), params).fetchall()
+        used = {int(r[0]) for r in rows if len(r[0]) <= 3}
+        n = 1
+        while n in used:
+            n += 1
+        return str(n)
+    prefix = parent.code
+    rows = db.session.execute(text(
+        f"SELECT code FROM accounts WHERE {scope} AND parent_id = :p"),
+        {**params, "p": str(parent.id)}).fetchall()
+    used = set()
+    for (code,) in rows:
+        suffix = code[len(prefix):] if code.startswith(prefix) else ""
+        if suffix.isdigit():
+            used.add(int(suffix))
+    n = 1
+    while n in used:
+        n += 1
+    return f"{prefix}{str(n).zfill(2)}"
+
+
 def _is_descendant(*, ancestor_id: uuid.UUID, node_id: uuid.UUID) -> bool:
     row = db.session.execute(text("""
         WITH RECURSIVE c AS (

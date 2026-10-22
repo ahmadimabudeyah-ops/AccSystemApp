@@ -1,4 +1,24 @@
 {% extends "layouts/dashboard.html" %}
 {% block title %}{{ page.title }}{% endblock %}
-{% block content %}{% include "shared/_list_body.html" %}{% endblock %}
+{% block content %}
+<div class="card mb-3">
+  <form class="row g-2" method="get" action="{{ url_for('web_entries.list') }}" role="search">
+    <div class="col-md-4">
+      <input class="form-control" type="search" name="q" value="{{ request.args.get('q', '') }}"
+             placeholder="رقم القيد أو البيان أو المرجع…" aria-label="بحث القيود">
+    </div>
+    <div class="col-md-3">
+      <input class="form-control ltr" type="date" name="from" value="{{ request.args.get('from', '') }}" aria-label="من تاريخ">
+    </div>
+    <div class="col-md-3">
+      <input class="form-control ltr" type="date" name="to" value="{{ request.args.get('to', '') }}" aria-label="إلى تاريخ">
+    </div>
+    <div class="col-md-2 d-flex gap-1">
+      <button class="btn btn-primary" type="submit">بحث</button>
+      <a class="btn btn-secondary" href="{{ url_for('web_entries.list') }}">مسح</a>
+    </div>
+  </form>
+</div>
+{% include "shared/_list_body.html" %}
+{% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/tables.js') }}?v=2"></script>{% endblock %}

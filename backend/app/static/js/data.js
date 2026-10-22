@@ -98,7 +98,7 @@
   };
   const endpoints = {
     accounts: async (params) => `/api/v1/accounts?entity_id=${await getEntity()}${params}`,
-    entries: async () => `/api/v1/journal-entries?limit=50`,
+    entries: async (extra) => `/api/v1/journal-entries?limit=50${extra || ""}`,
     users: async () => "/api/v1/users",
     branches: async () => `/api/v1/tenants/entities/${await getEntity()}/branches`,
   };
@@ -163,6 +163,13 @@
           extra += `&${k === "bal" ? "normal_balance" : k}=${encodeURIComponent(v)}`;
         });
       }
+      if (kind === "entries") {
+        extra = `&page=${Math.max(1, parseInt(qs.get("page") || "1", 10))}`;
+        ["q", "from", "to", "status"].forEach((k) => {
+          const v = qs.get(k);
+          if (v) extra += `&${k}=${encodeURIComponent(v)}`;
+        });
+      }
       const url = (src && src.startsWith("/"))
         ? src
         : useSearch
@@ -178,7 +185,10 @@
       const list = Array.isArray(raw) ? raw : [];
       renderPager(tbody, env, qs);
       if (!list.length) {
-        showRow(`لا بيانات في هذا النطاق${entityUsed ? ` (الكيان ${esc(entityUsed.slice(0, 8))}…` : ""}، الإجمالي ${env && env.total != null ? env.total : 0}) — <a href="/accounts/new">أنشئ أول حساب</a>`);
+        if (kind === "entries")
+          showRow("لا قيود مطابقة لهذا البحث");
+        else
+          showRow(`لا بيانات في هذا النطاق${entityUsed ? ` (الكيان ${esc(entityUsed.slice(0, 8))}…` : ""}، الإجمالي ${env && env.total != null ? env.total : 0}) — <a href="/accounts/new">أنشئ أول حساب</a>`);
         return;
       }
       const table = tbody.closest("table");
@@ -417,6 +427,29 @@
         body.innerHTML = (cf.months || []).map((m) =>
           `<tr><td class="ltr">${esc(m.month)}</td><td class="num">${esc(m.net)}</td></tr>`).join("") +
           `<tr><th>الإجمالي</th><th class="num">${esc(cf.total)}</th></tr>`;
+      } else if (name === "account-statement") {
+        const accSel = document.getElementById("rep-account");
+        const aid = accSel ? accSel.value : "";
+        const fromEl = document.getElementById("rep-from");
+        const toEl = document.getElementById("rep-to");
+        const from = fromEl ? fromEl.value : "";
+        const to = toEl ? toEl.value : "";
+        if (!aid) { window.toast("اختر الحساب", "error"); return; }
+        if (!from || !to) { window.toast("حدد تاريخ من وإلى", "error"); return; }
+        const lg = await api(`/api/v1/reports/ledger?account_id=${aid}&from=${from}&to=${to}&limit=1000`);
+        const rows = (lg && lg.lines) || [];
+        head.innerHTML = "<th>التاريخ</th><th>رقم القيد</th><th>البيان</th>" +
+          "<th class='num'>مدين</th><th class='num'>دائن</th><th class='num'>الرصيد</th>";
+        const opening = Number((lg && lg.opening_balance) || 0).toFixed(3);
+        const closing = Number((lg && lg.closing_balance) || 0).toFixed(3);
+        body.innerHTML = `<tr><td colspan="2"><strong>رصيد افتتاحي</strong></td><td></td>` +
+          `<td class="num"></td><td class="num"></td><td class="num"><strong>${opening}</strong></td></tr>` +
+          (rows.length ? rows.map((l) =>
+            `<tr><td class="ltr">${esc(l.posting_date || "")}</td><td class="ltr">${esc(l.official_number || "")}</td>` +
+            `<td>${esc(l.description || "")}</td><td class="num">${esc(l.debit)}</td>` +
+            `<td class="num">${esc(l.credit)}</td><td class="num">${esc(l.running_balance)}</td></tr>`).join("")
+            : "<tr><td colspan='6'>لا حركات في هذه الفترة</td></tr>") +
+          `<tr><th colspan="5">رصيد ختامي</th><th class="num">${closing}</th></tr>`;
       } else if (name === "ledger") {
         const accSel = document.getElementById("rep-account");
         const aid = accSel ? accSel.value : "";
@@ -474,9 +507,19 @@
   async function initReportFilter() {
     const f = document.getElementById("report-filter");
     if (!f || !sGet("access_token")) return;
-    if (["ledger", "aging-receivables", "aging-payables"].includes(f.dataset.report)) {
+    if (["ledger", "account-statement", "aging-receivables", "aging-payables"].includes(f.dataset.report)) {
       const w = document.getElementById("rep-account-wrap");
       if (w) w.hidden = false;
+    }
+    if (f.dataset.report === "account-statement") {
+      const dw = document.getElementById("rep-dates-wrap");
+      if (dw) dw.hidden = false;
+      const today = new Date().toISOString().slice(0, 10);
+      const fyStart = `${today.slice(0, 4)}-01-01`;
+      const fromEl = document.getElementById("rep-from");
+      const toEl = document.getElementById("rep-to");
+      if (fromEl && !fromEl.value) fromEl.value = fyStart;
+      if (toEl && !toEl.value) toEl.value = today;
     }
     try {
       const eid = await getEntity();
@@ -487,7 +530,7 @@
       sel.innerHTML = `<option value="">اختر…</option>` +
         ps.map((p) => `<option value="${esc(p.id)}">${esc(p.code)} (${esc(p.status)})</option>`).join("");
       const accSel = document.getElementById("rep-account");
-      if (accSel && f.dataset.report === "ledger") {
+      if (accSel && ["ledger", "account-statement"].includes(f.dataset.report)) {
         try {
           const accRaw = await apiAll(`/api/v1/accounts?entity_id=${eid}`);
           const accList = accRaw.filter((a) => a.is_postable);
@@ -693,7 +736,7 @@
             body: "{}" });
           const data = await res.json().catch(() => ({}));
           if (res.ok) window.location.reload();
-          else window.toast((data.error && data.error.code) || "تعذر التنفيذ", "error");
+          else window.toast((data.error && (data.error.message || data.error.code)) || "تعذر التنفيذ", "error");
         } catch (e) { window.toast("تعذر الاتصال", "error"); }
       });
     });
@@ -707,7 +750,7 @@
             method: "POST", headers: window.apiHeaders() });
           const data = await res.json();
           if (res.ok) window.location.reload();
-          else window.toast((data.error && data.error.code) || "تعذر التنفيذ", "error");
+          else window.toast((data.error && (data.error.message || data.error.code)) || "تعذر التنفيذ", "error");
         } catch (e) { window.toast("تعذر الاتصال", "error"); }
       });
     });

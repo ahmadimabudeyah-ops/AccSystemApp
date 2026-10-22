@@ -7,6 +7,7 @@ bp = Blueprint("web_reports", __name__, url_prefix="/reports")
 REPORTS = [
     ("trial-balance", "ميزان المراجعة"),
     ("ledger", "الأستاذ العام"),
+    ("account-statement", "كشف حساب تفصيلي"),
     ("balance-sheet", "الميزانية العمومية"),
     ("income-statement", "قائمة الدخل"),
     ("cash-flow", "التدفقات النقدية"),

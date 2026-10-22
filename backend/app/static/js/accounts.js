@@ -224,11 +224,11 @@
       const pid = keepingLegacy ? null : parentFor(r);
       if (pid === undefined) { note("اختر مستوى الحساب", "error"); return; }
       if (roleToSend !== null && r !== "section" && !pid) { note("اختر الأب المطلوب للمستوى", "error"); return; }
-      for (const id of ["f-code", "f-name", "f-type", "f-bal"]) {
+      for (const id of ["f-name", "f-type", "f-bal"]) {
         const el = document.getElementById(id);
         if (!String(el.value || "").trim()) { note("أكمل الحقول المطلوبة (بعلامة *)", "error"); el.focus(); return; }
       }
-      const payload = { entity_id: entity(), code: document.getElementById("f-code").value.trim(),
+      const payload = { entity_id: entity(),
         name_ar: document.getElementById("f-name").value.trim(),
         name_en: document.getElementById("f-name-en").value.trim() || null,
         account_type: document.getElementById("f-type").value,
@@ -238,6 +238,8 @@
         allow_manual: document.getElementById("f-manual").checked,
         require_partner: document.getElementById("f-partner").checked,
         notes: document.getElementById("f-notes").value.trim() || null };
+      const codeVal = document.getElementById("f-code").value.trim();
+      if (codeVal) payload.code = codeVal;
       if (roleToSend) payload.hierarchy_role = roleToSend;
       if (pid) payload.parent_id = pid;
       if (editId) {

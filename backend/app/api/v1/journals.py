@@ -9,7 +9,7 @@ Idempotency-Key header is honoured for POST /journal-entries.
 """
 from __future__ import annotations
 import uuid
-from datetime import date
+from datetime import date, datetime
 from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from ...extensions import db
@@ -130,9 +130,21 @@ def list_entries():
         q = q.filter(JournalEntry.posting_date >= request.args["from"])
     if request.args.get("to"):
         q = q.filter(JournalEntry.posting_date <= request.args["to"])
+    if request.args.get("q"):
+        like = f"%{request.args['q'].strip()}%"
+        q = q.filter((JournalEntry.official_number.ilike(like))
+                     | (JournalEntry.reference.ilike(like))
+                     | (JournalEntry.description.ilike(like)))
+    total = q.count()
+    try:
+        size = max(1, min(200, int(request.args.get("page_size", PAGE_SIZE))))
+    except (TypeError, ValueError):
+        size = PAGE_SIZE
     page = max(int(request.args.get("page", 1)), 1)
-    rows = q.order_by(JournalEntry.posting_date.desc()).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE).all()
-    return jsonify({"data": [_dump_entry(e) for e in rows], "page": page})
+    rows = (q.order_by(JournalEntry.posting_date.desc(), JournalEntry.created_at.desc())
+            .offset((page - 1) * size).limit(size).all())
+    return jsonify({"data": [_dump_entry(e) for e in rows], "page": page,
+                    "page_size": size, "total": total})
 
 
 @bp.post("/journal-entries")
@@ -204,7 +216,9 @@ def post_entry(entry_id):
     if denied:
         return denied
     try:
-        e = posting_service.post_entry(entry_id, uuid.UUID(str(get_jwt_identity())))
+        e = posting_service.post_entry(
+            entry_id, uuid.UUID(str(get_jwt_identity())),
+            allow_self=("admin.*" in get_jwt().get("permissions", [])))
     except AccountingError as exc:
         return _err(exc)
     return jsonify({"data": _dump_entry(e)})
@@ -218,8 +232,14 @@ def reverse_entry(entry_id):
         return denied
     data = request.get_json(force=True) or {}
     try:
+        reversal_date = date.fromisoformat(
+            data.get("reversal_date") or date.today().isoformat())
+    except ValueError:
+        return jsonify({"error": {"code": "BAD_DATE",
+                                  "message": "تاريخ العكس غير صالح"}}), 422
+    try:
         rev = posting_service.reverse_entry(entry_id, reason=data.get("reason", ""),
-                                            reversal_date=date.fromisoformat(data["reversal_date"]),
+                                            reversal_date=reversal_date,
                                             user_id=uuid.UUID(str(get_jwt_identity())),
                                             event_key=data.get("event_key") or request.headers.get("Idempotency-Key"))
     except AccountingError as exc:
@@ -242,13 +262,31 @@ def approve_entry(entry_id):
             row = approval_service.decide(uuid.UUID(str(data["approval_id"])), actor_id=uuid.UUID(str(get_jwt_identity())),
                                           approve=data.get("approve", True), reason=data.get("reason"))
             return jsonify({"data": {"approval_id": str(row.id), "status": row.status}})
-        row = approval_service.request_approval(
-            tenant_id=e.tenant_id, entity_id=e.entity_id, entry_id=e.id,
-            approver_id=uuid.UUID(str(data["approver_id"])),
-            actor_id=uuid.UUID(str(get_jwt_identity())))
+        if data.get("approver_id"):
+            row = approval_service.request_approval(
+                tenant_id=e.tenant_id, entity_id=e.entity_id, entry_id=e.id,
+                approver_id=uuid.UUID(str(data["approver_id"])),
+                actor_id=uuid.UUID(str(get_jwt_identity())))
+            return jsonify({"data": {"approval_id": str(row.id), "status": row.status}}), 201
+        # اعتماد مباشر: صلاحية admin.* تسمح باعتماد القيد ذاتيًا (بيئة مستخدم واحد)
+        me = uuid.UUID(str(get_jwt_identity()))
+        is_admin = "admin.*" in get_jwt().get("permissions", [])
+        if e.created_by == me and not is_admin:
+            from ...services.errors import SelfApprovalError
+            raise SelfApprovalError("لا يمكن اعتماد قيدك بنفسك — يلزم معتمد آخر")
+        if e.status not in ("draft", "pending_review"):
+            return jsonify({"error": {"code": "BAD_STATE",
+                                      "message": f"لا يمكن اعتماد قيد بحالة {e.status}"}}), 409
+        e.status = "approved"
+        e.approved_by = me
+        e.approved_at = datetime.utcnow()
+        e.status_changed_at = datetime.utcnow()
+        e.status_changed_by = me
+        e.updated_by = me
+        db.session.commit()
+        return jsonify({"data": {"entry_id": str(e.id), "status": e.status}})
     except AccountingError as exc:
         return _err(exc)
-    return jsonify({"data": {"approval_id": str(row.id), "status": row.status}}), 201
 
 
 @bp.get("/journal-entries/<uuid:entry_id>/approvals")

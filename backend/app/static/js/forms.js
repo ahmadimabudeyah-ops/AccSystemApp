@@ -1,5 +1,9 @@
 /* forms.js — تحقق النماذج بالعربية + إرسال القيد والدخول */
 (function () {
+  function escAttr(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, (c) => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
   function showError(input, message) {
     input.classList.add("invalid");
     let err = input.parentElement.querySelector(".form-error");
@@ -121,11 +125,37 @@
     const kind = form.dataset.kind;
     const partyUrl = kind === "sales" ? "/api/v1/parties?type=customer" : "/api/v1/parties?type=supplier";
     const [parties, products, taxes] = await Promise.all([
-      get(partyUrl), getAll(`/api/v1/products?entity_id=${eid}`), get("/api/v1/taxes").catch(() => []),
+      getAll(partyUrl), getAll(`/api/v1/products?entity_id=${eid}`), get("/api/v1/taxes").catch(() => []),
     ]);
     const pSel = form.querySelector('select[name="customer_id"]');
-    if (pSel) pSel.innerHTML = `<option value="">اختر…</option>` +
-      parties.map((p) => `<option value="${p.id}">${p.code} — ${p.name_ar}</option>`).join("");
+    const quickLabel = kind === "sales" ? "+ عميل جديد…" : "+ مورد جديد…";
+    if (pSel) {
+      pSel.innerHTML = `<option value="">اختر…</option>` +
+        parties.map((p) => `<option value="${p.id}">${p.code} — ${p.name_ar}</option>`).join("") +
+        `<option value="__new__">${quickLabel}</option>`;
+      pSel.addEventListener("change", async () => {
+        if (pSel.value !== "__new__") return;
+        const name = window.prompt(kind === "sales" ? "اسم العميل الجديد:" : "اسم المورد الجديد:");
+        if (!name || !name.trim()) { pSel.value = ""; return; }
+        try {
+          const res = await fetch("/api/v1/parties", {
+            method: "POST", headers: window.apiHeaders(),
+            body: JSON.stringify({ entity_id: eid, name_ar: name.trim(),
+              party_type: kind === "sales" ? "customer" : "supplier" }),
+          });
+          const d = await res.json().catch(() => ({}));
+          if (res.ok && d.data) {
+            pSel.insertAdjacentHTML("beforeend",
+              `<option value="${escAttr(d.data.id)}">${escAttr(d.data.code)} — ${escAttr(d.data.name_ar)}</option>`);
+            pSel.value = d.data.id;
+            window.toast("تمت إضافة الطرف بنجاح", "success");
+          } else {
+            window.toast((d.error && (d.error.message || d.error.code)) || "تعذر إضافة الطرف", "error");
+            pSel.value = "";
+          }
+        } catch (err) { window.toast("تعذر الاتصال بالخادم", "error"); pSel.value = ""; }
+      });
+    }
     const pOpts = products.map((p) => `<option value="${p.id}">${p.code} — ${p.name_ar}</option>`).join("");
     form.querySelectorAll('select[name="product"]').forEach((s) => { s.innerHTML = pOpts; });
     const tOpts = `<option value="" data-rate="0">بلا</option>` +
