@@ -133,7 +133,9 @@ def invoices():
         "فواتير العملاء", [("المبيعات", None), ("الفواتير", None)], active="sales-i",
         new_url=url_for("web_sales.new_invoice"), columns=INV_COLS, rows=[],
         api_src="/api/v1/sales/invoices", empty="لا فواتير بعد",
-        row_actions=True, detail_base="/sales/invoices", export=True))
+        row_actions=True, detail_base="/sales/invoices", export=True,
+        extra_actions=[{"label": "طباعة", "url": "/sales/invoices/{}/print", "icon": "fa-print", "style": "secondary"},
+                       {"label": "إرسال", "url": "/sales/invoices/{}/send", "icon": "fa-paper-plane", "style": "secondary"}]))
 
 
 @bp.get("/invoices/new")
@@ -183,11 +185,9 @@ def send_invoice(i_id):
 
 @bp.get("/invoices/<uuid:i_id>/print")
 def print_invoice(i_id):
-    return render_template("sales/detail.html", **h.ctx(
+    return render_template("sales/invoice_print.html", **h.ctx(
         "طباعة فاتورة", [("المبيعات", None), ("الفواتير", url_for("web_sales.invoices")), ("طباعة", None)],
-        active="sales-i", doc_kind="invoice", doc_id=i_id,
-        actions=[{"label": "رجوع للفاتورة", "url": url_for("web_sales.invoice_detail", i_id=i_id)}],
-        sections=[]))
+        active="sales-i", doc_id=i_id))
 
 
 @bp.get("/payments")

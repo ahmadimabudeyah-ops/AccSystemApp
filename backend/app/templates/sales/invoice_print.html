@@ -1,0 +1,101 @@
+{% extends "layouts/print.html" %}
+{% block title %}طباعة فاتورة{% endblock %}
+{% block content %}
+<div id="inv-print" data-id="{{ doc_id }}" style="max-width:800px;margin:0 auto;padding:24px;font-family:'Tajawal',sans-serif;direction:rtl;">
+  <div class="no-print" style="text-align:center;margin-bottom:20px">
+    <button class="btn btn-primary" onclick="window.print()">طباعة الفاتورة</button>
+    <a class="btn btn-secondary" href="{{ url_for('web_sales.invoice_detail', i_id=doc_id) }}">رجوع للفاتورة</a>
+  </div>
+  <div style="border:2px solid #1C1917;padding:24px;border-radius:8px;background:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+      <div>
+        <h1 style="margin:0;font-size:24px">فاتورة مبيعات</h1>
+        <div style="color:#666">رقم الفاتورة: <span id="d-no">…</span></div>
+        <div style="color:#666">التاريخ: <span id="d-date">…</span> — الحالة: <span id="d-status" class="badge" style="display:inline-block"></span></div>
+      </div>
+      <div style="text-align:left">
+        <div style="font-weight:700">الفاتورة الضريبية</div>
+        <div style="color:#666">JE-AccSys</div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-weight:700;margin-bottom:6px">العميل</div>
+        <div id="d-customer">…</div>
+      </div>
+      <div class="num">
+        <div style="font-weight:700">المتبقي</div>
+        <div id="d-rem" style="font-size:18px">…</div>
+      </div>
+    </div>
+    <table style="margin-bottom:16px">
+      <thead>
+        <tr>
+          <th style="width:40px">#</th>
+          <th>البيان</th>
+          <th class="num" style="width:100px">الكمية</th>
+          <th class="num" style="width:120px">السعر</th>
+          <th class="num" style="width:140px">الإجمالي</th>
+        </tr>
+      </thead>
+      <tbody id="inv-lines">
+        <tr><td colspan="5" style="text-align:center;color:#999">جاري تحميل البنود…</td></tr>
+      </tbody>
+    </table>
+    <div class="num" style="display:flex;justify-content:flex-end;gap:12px;margin-top:16px;font-size:16px">
+      <span>الإجمالي الفرعي: <span id="d-sub">…</span></span>
+      <span>الضريبة: <span id="d-tax">…</span></span>
+      <span style="font-weight:700;border-top:1px solid #000;padding-top:6px">المجموع الكلي: <span id="d-grand">…</span></span>
+    </div>
+    <div style="margin-top:20px;color:#666;font-size:13px">
+      شكراً لتعاملاتكم — هذه الفاتورةligeة عبر نظام المحاسبة.
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var root = document.getElementById("inv-print");
+  if (!root) return;
+  var id = root.dataset.id;
+  var headers = window.apiHeaders ? window.apiHeaders() : {};
+  fetch("/api/v1/sales/invoices/" + id, {headers: headers}).then(function(r){return r.json();}).then(function(res){
+    var d = res.data || res;
+    document.getElementById("d-no").textContent = d.doc_number || "";
+    document.getElementById("d-date").textContent = d.invoice_date || "";
+    document.getElementById("d-status").textContent = d.status || "";
+    document.getElementById("d-status").className = "badge badge-" + (d.status || "draft");
+    document.getElementById("d-customer").textContent = d.customer_name || "";
+    document.getElementById("d-rem").textContent = (d.remaining_amount || 0).toFixed(3);
+    document.getElementById("d-sub").textContent = (d.subtotal || 0).toFixed(3);
+    document.getElementById("d-tax").textContent = (d.tax_total || 0).toFixed(3);
+    document.getElementById("d-grand").textContent = (d.grand_total || 0).toFixed(3);
+    // جلب البنود من نفس الاستجابة إن وجدت، وإلا استدعاء سطر التفاصيل
+    var lines = d.lines || [];
+    var tbody = document.getElementById("inv-lines");
+    tbody.innerHTML = "";
+    if (!lines.length) {
+      // محاولة جلب الأسطر عبر endpoint منفصل إن توفرت
+      fetch("/api/v1/sales/invoices/" + id + "/lines", {headers: headers}).then(function(r){return r.json();}).then(function(r2){
+        lines = r2.data || r2.lines || [];
+        renderLines(lines);
+      }).catch(function(){ renderLines([]); });
+    } else {
+      renderLines(lines);
+    }
+    function renderLines(lines){
+      tbody.innerHTML = "";
+      lines.forEach(function(l,i){
+        var tr = document.createElement("tr");
+        tr.innerHTML = "<td class='num'>"+(i+1)+"</td><td>"+(l.product_name||l.description||"")+"</td>" +
+          "<td class='num'>"+(l.qty||0).toFixed(3)+"</td>" +
+          "<td class='num'>"+(l.unit_price||0).toFixed(3)+"</td>" +
+          "<td class='num'>"+(l.line_total||((l.qty||0)*(l.unit_price||0))).toFixed(3)+"</td>";
+        tbody.appendChild(tr);
+      });
+    }
+  }).catch(function(){
+    document.getElementById("inv-lines").innerHTML = "<tr><td colspan='5' style='color:#c00'>تعذر تحميل بيانات الفاتورة</td></tr>";
+  });
+})();
+</script>
+{% endblock %}

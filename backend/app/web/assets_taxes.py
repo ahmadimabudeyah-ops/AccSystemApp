@@ -35,8 +35,23 @@ def detail(a_id):
     return render_template("assets/detail.html", **h.ctx(
         "تفاصيل الأصل", [("الأصول", url_for("web_assets.list")), ("التفاصيل", None)], active="assets",
         asset_id=a_id,
-        actions=[],
+        actions=[{"label": "تعديل", "url": url_for("web_assets.edit", a_id=a_id)}],
         sections=[]))
+
+
+@bp_assets.get("/<uuid:a_id>/edit")
+def edit(a_id):
+    return render_template("assets/form.html", **h.ctx(
+        "تعديل أصل", [("الأصول", url_for("web_assets.list")), ("التفاصيل", url_for("web_assets.detail", a_id=a_id)), ("تعديل", None)], active="assets",
+        api_post=f"/api/v1/assets/{a_id}", redirect_url="/assets",
+        method="PUT", prefill=f"/api/v1/assets/{a_id}",
+        fields=[{"name": "category_id", "label": "الفئة", "type": "select", "source": "asset_categories", "required": True},
+                {"name": "code", "label": "الرمز", "required": True, "ltr": True},
+                {"name": "name_ar", "label": "الاسم", "required": True},
+                {"name": "acquisition_date", "label": "تاريخ الاقتناء", "type": "date", "required": True},
+                {"name": "acquisition_cost", "label": "كلفة الاقتناء", "type": "number", "required": True, "ltr": True}],
+        submit="حفظ التعديلات",
+        cancel_url=url_for("web_assets.detail", a_id=a_id)))
 
 
 @bp_assets.get("/depreciation")

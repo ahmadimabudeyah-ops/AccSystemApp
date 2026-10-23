@@ -14,6 +14,7 @@
     <thead><tr>
       {% for col in page.columns %}<th data-key="{{ col.key }}" class="{% if col.num %}num{% endif %}" {% if col.num %}data-num="1"{% endif %} {% if col.badge %}data-badge="1"{% endif %}>{{ col.label }}</th>{% endfor %}
       {% if page.row_actions %}<th>إجراءات</th>{% endif %}
+      {% if page.extra_actions %}<th>إجراءات سريعة</th>{% endif %}
     </tr></thead>
     <tbody {% if page.api %}data-api="{{ page.api }}"{% endif %} {% if page.api_src %}data-src="{{ page.api_src }}"{% endif %} {% if page.detail_base %}data-detail="{{ page.detail_base }}"{% endif %}>
       {% for row in page.rows %}
@@ -26,6 +27,11 @@
             </td>
           {% endfor %}
           {% if page.row_actions %}<td><a class="btn btn-ghost btn-icon" href="{{ page.detail_base }}/{{ row.id }}" aria-label="عرض"><i class="fa-solid fa-eye"></i></a></td>{% endif %}
+          {% if page.extra_actions %}<td>
+            {% for action in page.extra_actions %}
+              <a class="btn btn-{{ action.style or 'ghost' }} btn-icon" href="{{ action.url.format(id=row.id) }}" aria-label="{{ action.label }}"><i class="fa-solid {{ action.icon }}"></i></a>
+            {% endfor %}
+          </td>{% endif %}
         </tr>
       {% else %}
         <tr><td colspan="20">{% set message = page.empty %}{% set new_url = page.new_url %}{% include "partials/empty_state.html" %}</td></tr>
