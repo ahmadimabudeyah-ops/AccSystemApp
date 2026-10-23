@@ -1,7 +1,7 @@
 """Purchases API: vendor bills (auto-posting), payments, allocations."""
 from __future__ import annotations
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required, get_jwt
 from ...extensions import db
@@ -476,10 +476,19 @@ def list_agreements():
     rows = db.session.query(PurchaseAgreement).filter_by(
         tenant_id=uuid.UUID(str(g.tenant_id)), is_deleted=False
     ).order_by(PurchaseAgreement.created_at.desc()).limit(PAGE).all()
-    return jsonify({"data": [{"id": str(a.id), "code": a.code,
-                              "supplier_name": a.supplier_name,
-                              "total_amount": float(a.total_amount),
-                              "status": a.status} for a in rows]})
+    out = []
+    for a in rows:
+        supplier = db.session.get(Party, a.supplier_id)
+        total = sum(float(l.qty) * float(l.unit_price)
+                    for l in a.lines if not l.is_deleted)
+        out.append({"id": str(a.id), "code": a.doc_number,
+                    "doc_number": a.doc_number,
+                    "supplier_id": str(a.supplier_id),
+                    "supplier_name": supplier.name_ar if supplier else "?",
+                    "total_amount": total, "status": a.status,
+                    "start_date": a.start_on.isoformat() if a.start_on else None,
+                    "end_date": a.ends_on.isoformat() if a.ends_on else None})
+    return jsonify({"data": out})
 
 
 @bp.post("/agreements")
@@ -494,53 +503,39 @@ def create_agreement():
     tenant_id = uuid.UUID(str(g.tenant_id))
     entity_id = uuid.UUID(str(data["entity_id"]))
     supplier_id = uuid.UUID(str(data["supplier_id"]))
+    lines_in = data.get("lines") or []
+    if not lines_in and data.get("product_id"):
+        lines_in = [{"product_id": data["product_id"],
+                     "qty": data.get("qty", 1),
+                     "unit_price": data.get("unit_price")}]
+    if not lines_in:
+        return jsonify({"error": {"code": "VALIDATION",
+                                  "message": "at least one line is required"}}), 422
+    for l in lines_in:
+        if not l.get("product_id") or l.get("unit_price") is None:
+            return jsonify({"error": {"code": "VALIDATION",
+                                      "message": "product_id and unit_price are required"}}), 422
     number = sequence_service.next_doc_number(tenant_id=tenant_id, entity_id=entity_id,
                                               doctype="purchase_agreement", year=date.today().year)
-    sub = Decimal("0")
-    tax = Decimal("0")
-    enriched = []
-    for l in data.get("lines", []):
-        qty = Decimal(str(l.get("qty", 1)))
-        price = Decimal(str(l["unit_price"]))
-        disc = Decimal(str(l.get("discount_pct", 0))) / 100
-        net = qty * price * (1 - disc)
-        rate = Decimal("0")
-        if l.get("tax_id"):
-            from ...models.treasury import Tax as _Tax
-            t = db.session.get(_Tax, uuid.UUID(str(l["tax_id"])))
-            if t is None or not t.is_active:
-                return jsonify({"error": {"code": "VALIDATION",
-                                          "message": f"Invalid tax: {l['tax_id']}"}}), 422
-            rate = Decimal(str(t.rate))
-        t_amount = (net * rate / 100).quantize(Decimal("0.001"))
-        sub += net
-        tax += t_amount
-        enriched.append((l, net, t_amount))
-    agr = PurchaseAgreement(tenant_id=tenant_id, entity_id=entity_id, code=number,
-                            supplier_id=supplier_id, supplier_name=data.get("supplier_name", ""),
-                            start_date=date.fromisoformat(data["start_date"]) if data.get("start_date") else None,
-                            end_date=date.fromisoformat(data["end_date"]) if data.get("end_date") else None,
-                            currency_id=data.get("currency_id", "JOD"),
-                            subtotal=sub, tax_total=tax, grand_total=sub + tax,
-                            total_amount=sub + tax, status="draft",
-                            notes=data.get("notes"),
-                            created_by=uuid.UUID(str(get_jwt().get("sub"))),
-                            updated_by=uuid.UUID(str(get_jwt().get("sub"))))
+    start_on = (date.fromisoformat(data["start_date"])
+                if data.get("start_date") else date.today())
+    ends_on = (date.fromisoformat(data["end_date"])
+               if data.get("end_date") else start_on + timedelta(days=365))
+    me = uuid.UUID(str(get_jwt().get("sub")))
+    agr = PurchaseAgreement(tenant_id=tenant_id, entity_id=entity_id,
+                            doc_number=number, supplier_id=supplier_id,
+                            start_on=start_on, ends_on=ends_on, status="draft",
+                            notes=data.get("notes"), created_by=me, updated_by=me)
     db.session.add(agr)
     db.session.flush()
-    for i, (l, net, t_amount) in enumerate(enriched, 1):
+    for i, l in enumerate(lines_in, 1):
         db.session.add(PurchaseAgreementLine(
             tenant_id=tenant_id, agreement_id=agr.id, line_number=i,
-            product_id=uuid.UUID(str(l["product_id"])) if l.get("product_id") else None,
-            description=l.get("description", ""),
+            product_id=uuid.UUID(str(l["product_id"])),
             qty=l.get("qty", 1), unit_price=l["unit_price"],
-            discount_pct=l.get("discount_pct", 0),
-            tax_id=uuid.UUID(str(l["tax_id"])) if l.get("tax_id") else None,
-            line_total=net + t_amount,
-            created_by=uuid.UUID(str(get_jwt().get("sub"))),
-            updated_by=uuid.UUID(str(get_jwt().get("sub")))))
+            created_by=me, updated_by=me))
     db.session.commit()
-    return jsonify({"data": {"id": str(agr.id), "code": agr.code}}), 201
+    return jsonify({"data": {"id": str(agr.id), "code": agr.doc_number}}), 201
 
 
 @bp.get("/agreements/<uuid:agr_id>")
@@ -556,20 +551,23 @@ def get_agreement(agr_id):
     if pids:
         for p in db.session.query(Product).filter(Product.id.in_(pids)).all():
             pmap[str(p.id)] = {"code": p.code, "name_ar": p.name_ar}
-    return jsonify({"data": {"id": str(agr.id), "code": agr.code,
-                             "supplier_name": agr.supplier_name,
-                             "start_date": agr.start_date.isoformat() if agr.start_date else None,
-                             "end_date": agr.end_date.isoformat() if agr.end_date else None,
-                             "subtotal": float(agr.subtotal),
-                             "tax_total": float(agr.tax_total),
-                             "grand_total": float(agr.grand_total),
+    supplier = db.session.get(Party, agr.supplier_id)
+    total = sum(float(l.qty) * float(l.unit_price)
+                for l in agr.lines if not l.is_deleted)
+    return jsonify({"data": {"id": str(agr.id), "code": agr.doc_number,
+                             "doc_number": agr.doc_number,
+                             "supplier_id": str(agr.supplier_id),
+                             "supplier_name": supplier.name_ar if supplier else "?",
+                             "start_date": agr.start_on.isoformat() if agr.start_on else None,
+                             "end_date": agr.ends_on.isoformat() if agr.ends_on else None,
+                             "subtotal": total, "tax_total": 0,
+                             "grand_total": total, "total_amount": total,
                              "status": agr.status, "notes": agr.notes,
                              "lines": [{"product_id": str(l.product_id) if l.product_id else None,
                                         "product_code": (pmap.get(str(l.product_id)) or {}).get("code"),
                                         "product_name": (pmap.get(str(l.product_id)) or {}).get("name_ar"),
-                                        "description": l.description,
                                         "qty": float(l.qty), "unit_price": float(l.unit_price),
-                                        "line_total": float(l.line_total)}
+                                        "line_total": float(l.qty) * float(l.unit_price)}
                                        for l in agr.lines if not l.is_deleted]}})
 
 

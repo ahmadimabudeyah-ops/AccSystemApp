@@ -171,22 +171,42 @@ def file_tax_return(*, tenant_id, entity_id, tax_id, period_code, actor_id):
               "x": str(tax_id), "y": int(year), "m": int(month)}
     month_cond_inv = ("date_trunc('month', i.invoice_date)::date = "
                       "make_date(CAST(:y AS INTEGER), CAST(:m AS INTEGER), 1)")
+    posted_docs = "('posted','partially_paid','paid')"
     out = db.session.execute(_text(
-        "SELECT COALESCE(SUM(t.tax_amount),0)::float, COALESCE(SUM(i.grand_total),0)::float "
+        "SELECT COALESCE(SUM(t.tax_amount),0)::float "
         "FROM customer_invoice_taxes t JOIN customer_invoices i ON i.id = t.invoice_id "
-        "WHERE t.tenant_id = :t AND i.entity_id = :e AND t.tax_id = :x AND i.status = 'posted' "
-        f"AND {month_cond_inv} AND t.is_deleted = FALSE"),
+        "WHERE t.tenant_id = :t AND i.entity_id = :e AND t.tax_id = :x "
+        f"AND i.status IN {posted_docs} "
+        f"AND {month_cond_inv} AND t.is_deleted = FALSE AND i.is_deleted = FALSE"),
+        params).first()
+    sales = db.session.execute(_text(
+        "SELECT COALESCE(SUM(i.grand_total),0)::float "
+        "FROM customer_invoices i "
+        "WHERE i.tenant_id = :t AND i.entity_id = :e "
+        f"AND i.status IN {posted_docs} "
+        f"AND {month_cond_inv} AND i.is_deleted = FALSE"),
         params).first()
     cn = db.session.execute(_text(
         "SELECT COALESCE(SUM(n.tax_total),0)::float "
-        "FROM credit_notes n JOIN credit_note_lines l ON l.note_id = n.id "
+        "FROM credit_notes n "
         "WHERE n.tenant_id = :t AND n.entity_id = :e AND n.status = 'posted' "
         "AND date_trunc('month', n.note_date)::date = make_date(CAST(:y AS INTEGER), CAST(:m AS INTEGER), 1) "
-        "AND n.is_deleted = FALSE AND l.is_deleted = FALSE AND l.tax_id = :x"),
+        "AND n.is_deleted = FALSE AND EXISTS ("
+        "SELECT 1 FROM credit_note_lines l WHERE l.note_id = n.id "
+        "AND l.is_deleted = FALSE AND l.tax_id = :x)"),
+        params).first()
+    bill_tax = db.session.execute(_text(
+        "SELECT COALESCE(SUM(l.tax_amount),0)::float "
+        "FROM vendor_bill_lines l JOIN vendor_bills b ON b.id = l.bill_id "
+        "WHERE l.tenant_id = :t AND b.entity_id = :e AND l.tax_id = :x "
+        f"AND b.status IN {posted_docs} "
+        "AND date_trunc('month', b.bill_date)::date = make_date(CAST(:y AS INTEGER), CAST(:m AS INTEGER), 1) "
+        "AND l.is_deleted = FALSE AND b.is_deleted = FALSE"),
         params).first()
     bills = db.session.execute(_text(
-        "SELECT COALESCE(SUM(b.tax_total),0)::float, COALESCE(SUM(b.grand_total),0)::float "
-        "FROM vendor_bills b WHERE b.tenant_id = :t AND b.entity_id = :e AND b.status = 'posted' "
+        "SELECT COALESCE(SUM(b.grand_total),0)::float "
+        "FROM vendor_bills b WHERE b.tenant_id = :t AND b.entity_id = :e "
+        f"AND b.status IN {posted_docs} "
         "AND date_trunc('month', b.bill_date)::date = make_date(CAST(:y AS INTEGER), CAST(:m AS INTEGER), 1) "
         "AND b.is_deleted = FALSE"),
         params).first()
@@ -197,11 +217,11 @@ def file_tax_return(*, tenant_id, entity_id, tax_id, period_code, actor_id):
         "AND r.is_deleted = FALSE"),
         params).first()
     output_tax = round((out[0] or 0.0) - (cn[0] or 0.0), 3)
-    input_tax = round((bills[0] or 0.0) - (vret[0] or 0.0), 3)
+    input_tax = round((bill_tax[0] or 0.0) - (vret[0] or 0.0), 3)
     ret = TaxReturn(tenant_id=uuid.UUID(str(tenant_id)), entity_id=uuid.UUID(str(entity_id)),
                     tax_id=tax.id, period_code=period_code,
-                    sales_total=(out[1] or 0.0), tax_due=output_tax,
-                    purchase_total=(bills[1] or 0.0), input_tax=input_tax,
+                    sales_total=(sales[0] or 0.0), tax_due=output_tax,
+                    purchase_total=(bills[0] or 0.0), input_tax=input_tax,
                     output_tax=output_tax, net_due=round(output_tax - input_tax, 3),
                     status="filed", created_by=actor_id, updated_by=actor_id)
     from datetime import datetime

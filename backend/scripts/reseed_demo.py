@@ -45,6 +45,7 @@ WIPE = [
     "goods_receipt_lines", "goods_receipts",
     "purchase_order_lines", "purchase_orders",
     "purchase_request_lines", "purchase_requests",
+    "purchase_agreement_lines", "purchase_agreements",
     "sales_order_lines", "sales_orders",
     "delivery_lines", "deliveries",
     "quotation_lines", "quotations",
