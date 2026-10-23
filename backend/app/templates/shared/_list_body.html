@@ -16,7 +16,7 @@
       {% if page.row_actions %}<th>إجراءات</th>{% endif %}
       {% if page.extra_actions %}<th>إجراءات سريعة</th>{% endif %}
     </tr></thead>
-    <tbody {% if page.api %}data-api="{{ page.api }}"{% endif %} {% if page.api_src %}data-src="{{ page.api_src }}"{% endif %} {% if page.detail_base %}data-detail="{{ page.detail_base }}"{% endif %}>
+    <tbody {% if page.api %}data-api="{{ page.api }}"{% endif %} {% if page.api_src %}data-src="{{ page.api_src }}"{% endif %} {% if page.detail_base %}data-detail="{{ page.detail_base }}"{% endif %} {% if page.extra_actions %}data-extra='{{ page.extra_actions|tojson }}'{% endif %}>
       {% for row in page.rows %}
         <tr>
           {% for col in page.columns %}

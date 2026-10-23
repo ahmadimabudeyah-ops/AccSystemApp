@@ -4,7 +4,10 @@
 <div id="doc-detail" data-kind="asset" data-id="{{ asset_id }}">
   <div class="d-flex justify-between align-center mb-3">
     <h1>{{ page.title }} <span id="d-no">…</span> <span class="badge badge-draft" id="d-status">…</span></h1>
-    <a class="btn btn-secondary" href="/assets/{{ asset_id }}/disposal">استبعاد</a>
+    <div class="d-flex gap-2">
+      <a class="btn btn-primary" href="{{ url_for('web_assets.edit', a_id=asset_id) }}">تعديل</a>
+      <a class="btn btn-secondary" href="/assets/{{ asset_id }}/disposal">استبعاد</a>
+    </div>
   </div>
   <div class="card mb-3"><div class="d-flex gap-3" id="d-head">
     <span>الكلفة: <strong class="num" id="d-cost">…</strong></span>
@@ -24,4 +27,4 @@
   </div>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/forms.js') }}?v=3"></script><script src="{{ url_for('static', filename='js/data.js') }}?v=7"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/forms.js') }}?v=3"></script><script src="{{ url_for('static', filename='js/data.js') }}?v=8"></script>{% endblock %}

@@ -23,41 +23,78 @@
 </div>
 
 <style>
-.qc-icon{font-size:28px;color:var(--primary,#6c5ce7);background:rgba(108,92,231,.10);width:52px;height:52px;border-radius:14px;display:grid;place-items:center;margin:0 auto 8px}
-.dash-qc{text-decoration:none;color:inherit;display:flex;flex-direction:column;align-items:center;padding:12px;border-radius:14px;border:1px solid var(--border,#e2e8f0);background:#fff}
-.dash-qc:hover{background:var(--hover-bg,#f8f9fa);transform:translateY(-2px);transition:.2s;border-color:var(--primary,#6c5ce7)}
-.dash-qc .qc-title{text-align:center;font-size:0.82rem;font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;width:100%}
+.qc-wrap{margin-top:8px}
+.qc-group-title{font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-soft,#6b7280);font-weight:700;margin:14px 0 8px;padding:0 4px}
+.qc-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.qc-card{flex:1 1 calc(25% - 10px);min-width:140px;display:flex;flex-direction:column;align-items:center;text-decoration:none;color:inherit;padding:14px 10px;border-radius:16px;border:1px solid var(--border,#e5e7eb);background:#fff;transition:all .25s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 3px rgba(0,0,0,.04);position:relative;overflow:hidden}
+.qc-card::before{content:"";position:absolute;inset:0;border-radius:16px;padding:2px;background:linear-gradient(135deg,var(--qc-accent,#6c5ce7),transparent);-webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);-webkit-mask-composite:destination-out;mask-composite:exclude;opacity:0;transition:opacity .25s}
+.qc-card:hover{transform:translateY(-6px);box-shadow:0 12px 24px rgba(0,0,0,.10);border-color:transparent;z-index:2}
+.qc-card:hover::before{opacity:1}
+.qc-card:hover .qc-icon{transform:scale(1.12) rotate(-2deg)}
+.qc-icon{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:20px;margin:0 auto 8px;box-shadow:0 4px 10px rgba(0,0,0,.08);transition:transform .25s;background:#fff;border:1px solid rgba(0,0,0,.04)}
+.qc-title{text-align:center;font-size:0.78rem;font-weight:700;line-height:1.2;color:var(--text,#111827);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;width:100%}
+.qc-title:hover{color:var(--qc-accent,#6c5ce7)}
+
+/* أيقونات ملونة حسب المجموعة */
+.qc-finance .qc-icon{background:#fff3e2;color:#c2410c;border-color:#fde6a1}
+.qc-trade .qc-icon{background:#eef4ff;color:#2563eb;border-color:#bfdbfe}
+.qc-supply .qc-icon{background:#f0fdf4;color:#15803d;border-color:#bbf7d0}
+.qc-money .qc-icon{background:#fef9c3;color:#ca8a04;border-color:#fef08a}
+.qc-report .qc-icon{background:#f3e8ff;color:#7c3aed;border-color:#ead3ff}
+.qc-setting .qc-icon{background:#f1f5f9;color:#475569;border-color:#cbd5e1}
+.qc-card.qc-finance{--qc-accent:#f97316}
+.qc-card.qc-trade{--qc-accent:#3b82f6}
+.qc-card.qc-supply{--qc-accent:#22c55e}
+.qc-card.qc-money{--qc-accent:#eab308}
+.qc-card.qc-report{--qc-accent:#a855f7}
+.qc-card.qc-setting{--qc-accent:#64748b}
+@media (max-width:768px){.qc-card{flex:1 1 calc(50% - 10px)}}
 </style>
 
-{% set quick_cards = [
-  ("web_entries.list", {}, "fa-book-open", "القيود اليومية"),
-  ("web_entries.new", {}, "fa-plus-circle", "قيد جديد"),
-  ("web_sales.new_invoice", {}, "fa-file-invoice-dollar", "فاتورة مبيعات"),
-  ("web_sales.invoices", {}, "fa-receipt", "فواتير العملاء"),
-  ("web_purchases.new_bill", {}, "fa-file-invoice", "فاتورة مشتريات"),
-  ("web_purchases.bills", {}, "fa-truck-loading", "فواتير الموردين"),
-  ("web_parties.customers", {}, "fa-users", "العملاء"),
-  ("web_parties.suppliers", {}, "fa-truck", "الموردون"),
-  ("web_accounts.list", {}, "fa-book", "دليل الحسابات"),
-  ("web_accounts.tree", {}, "fa-sitemap", "شجرة الحسابات"),
-  ("web_reports.view", {"name": "trial-balance"}, "fa-balance-scale", "ميزان المراجعة"),
-  ("web_reports.view", {"name": "ledger"}, "fa-book-open-reader", "الأستاذ العام"),
-  ("web_reports.view", {"name": "account-statement"}, "fa-file-alt", "كشف حساب تفصيلي"),
-  ("web_reports.index", {}, "fa-chart-column", "التقارير"),
-  ("web_treasury.cash_boxes", {}, "fa-money-bill-wave", "الصناديق"),
-  ("web_treasury.banks", {}, "fa-university", "البنوك"),
-  ("web_products.list", {}, "fa-box", "الأصناف"),
-  ("web_settings.index", {}, "fa-gear", "الإعدادات"),
+{% set quick_groups = [
+  ("المحاسبة والقيود", "qc-finance", [
+    ("web_entries.list", {}, "fa-book-open", "القيود اليومية", "عرض وتسجيل القيود"),
+    ("web_entries.new", {}, "fa-plus-circle", "قيد جديد", "إنشاء قيد محاسبي"),
+    ("web_sales.new_invoice", {}, "fa-file-invoice-dollar", "فاتورة مبيعات", "إصدار فاتورة عميل"),
+    ("web_sales.invoices", {}, "fa-receipt", "فواتير العملاء", "قائمة فواتير المبيعات"),
+  ]),
+  ("المشتريات والموردين", "qc-supply", [
+    ("web_purchases.new_bill", {}, "fa-file-invoice", "فاتورة مشتريات", "إصدار فاتورة مورد"),
+    ("web_purchases.bills", {}, "fa-truck-loading", "فواتير الموردين", "قائمة فواتير المشتريات"),
+    ("web_parties.suppliers", {}, "fa-truck", "الموردون", "إدارة بيانات الموردين"),
+  ]),
+  ("العملاء والحسابات", "qc-trade", [
+    ("web_parties.customers", {}, "fa-users", "العملاء", "إدارة بيانات العملاء"),
+    ("web_accounts.list", {}, "fa-book", "دليل الحسابات", "شجرة الحسابات والدليل"),
+    ("web_accounts.tree", {}, "fa-sitemap", "شجرة الحسابات", "عرض الهيكل الهرمي"),
+  ]),
+  ("الخزينة والبنوك", "qc-money", [
+    ("web_treasury.cash_boxes", {}, "fa-money-bill-wave", "الصناديق", "إدارة صناديق النقدية"),
+    ("web_treasury.banks", {}, "fa-university", "البنوك", "إدارة الحسابات البنكية"),
+  ]),
+  ("التقارير", "qc-report", [
+    ("web_reports.view", {"name": "trial-balance"}, "fa-balance-scale", "ميزان المراجعة", "تقرير ميزان المراجعة"),
+    ("web_reports.view", {"name": "ledger"}, "fa-book-open-reader", "الأستاذ العام", "الأستاذ العام للحسابات"),
+    ("web_reports.view", {"name": "account-statement"}, "fa-file-alt", "كشف حساب تفصيلي", "كشف حساب طرف"),
+    ("web_reports.index", {}, "fa-chart-column", "التقارير", "فهرس جميع التقارير"),
+  ]),
+  ("الإعدادات", "qc-setting", [
+    ("web_settings.index", {}, "fa-gear", "الإعدادات", "إعدادات النظام العامة"),
+    ("web_products.list", {}, "fa-box", "الأصناف", "إدارة الأصناف والوحدات"),
+  ]),
 ] %}
 
 <h3 class="mb-2">الوصول السريع للشاشات</h3>
-<div class="row g-2 mb-3">
-{% for endpoint, kwargs, icon, title in quick_cards %}
-  <div class="col-md-6 col-lg-4 col-xl-3">
-    <a href="{{ url_for(endpoint, **kwargs) }}" class="dash-qc">
+<div class="qc-wrap">
+{% for group_name, group_class, cards in quick_groups %}
+  <div class="qc-group-title">{{ group_name }}</div>
+  <div class="qc-row">
+{% for endpoint, kwargs, icon, title, subtitle in cards %}
+    <a href="{{ url_for(endpoint, **kwargs) }}" class="qc-card {{ group_class }}" title="{{ subtitle }}">
       <div class="qc-icon"><i class="fa-solid {{ icon }}"></i></div>
       <div class="qc-title">{{ title }}</div>
     </a>
+{% endfor %}
   </div>
 {% endfor %}
 </div>

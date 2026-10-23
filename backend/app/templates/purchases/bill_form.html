@@ -8,7 +8,7 @@
       <div class="col-md-3"><label class="form-label">المورد *</label>
         <select class="form-control" name="customer_id" required><option value="">اختر…</option></select></div>
       <div class="col-md-3"><label class="form-label">التاريخ *</label>
-        <input class="form-control" type="date" name="invoice_date" required></div>
+        <input class="form-control ltr" type="date" name="invoice_date" required></div>
       <div class="col-md-2"><label class="form-label">العملة</label>
         <select class="form-control ltr" name="currency_id" dir="ltr"><option value="JOD">JOD</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="SAR">SAR</option><option value="AED">AED</option></select></div>
       <div class="col-md-2"><label class="form-label">سعر الصرف</label>
@@ -17,24 +17,47 @@
         <input class="form-control ltr" name="supplier_ref" dir="ltr"></div>
     </div>
     <div class="table-wrap mb-2"><table class="table-lux" id="inv-lines">
-      <thead><tr><th>الصنف</th><th class="num">الكمية</th><th class="num">السعر</th><th class="num">الخصم %</th><th class="num">الضريبة</th><th></th></tr></thead>
-      <tbody><tr>
-        <td><select class="form-control" name="product"></select></td>
-        <td><input class="form-control num ltr" name="qty" type="number" step="0.001" value="1"></td>
-        <td><input class="form-control num ltr" name="price" type="number" step="0.001" value="0"></td>
-        <td><input class="form-control num ltr" name="disc" type="number" step="0.01" value="0"></td>
-        <td><select class="form-control" name="tax"><option value="">بلا</option></select></td>
-        <td><button type="button" class="btn btn-ghost btn-icon" onclick="this.closest('tr').remove();invTotal()">✕</button></td>
-      </tr></tbody>
+      <thead>
+        <tr>
+          <th style="width:40px">#</th>
+          <th style="width:100px">كود الصنف</th>
+          <th>الصنف / الوصف</th>
+          <th class="num" style="width:100px">الكمية</th>
+          <th class="num" style="width:120px">سعر الوحدة</th>
+          <th class="num" style="width:140px">الخصم %</th>
+          <th class="num" style="width:130px">الضريبة</th>
+          <th class="num" style="width:130px">الإجمالي</th>
+          <th style="width:80px">الإجراء</th>
+        </tr>
+      </thead>
+      <tbody id="inv-lines-body">
+        <tr class="inv-line">
+          <td class="num line-no">1</td>
+          <td><input class="form-control num ltr line-code" type="text" readonly></td>
+          <td><select class="form-control line-product" name="product"></select></td>
+          <td><input class="form-control num ltr line-qty" type="number" step="0.001" value="1"></td>
+          <td><input class="form-control num ltr line-price" type="number" step="0.001" value="0"></td>
+          <td><input class="form-control num ltr line-disc" type="number" step="0.01" value="0"></td>
+          <td><select class="form-control line-tax" name="tax"><option value="" data-rate="0">بلا</option></select></td>
+          <td class="num line-total">0.000</td>
+          <td><button type="button" class="btn btn-ghost btn-icon" onclick="removeInvLine(this)">✕</button></td>
+        </tr>
+      </tbody>
     </table></div>
-    <div class="d-flex gap-2 align-center">
-      <button type="button" class="btn btn-secondary" onclick="addInvLine()">+ بند</button>
-      <strong class="ms-auto">الإجمالي: <span class="num" id="inv-total">0.000</span></strong>
+    <div class="d-flex gap-2 align-center justify-between mt-2">
+      <div>
+        <button type="button" class="btn btn-secondary" onclick="addInvLine()">+ إضافة سطر</button>
+      </div>
+      <div class="d-flex gap-2 align-center">
+        <strong class="me-2">الإجمالي الفرعي: <span class="num" id="inv-subtotal">0.000</span></strong>
+        <strong class="me-2">الضريبة: <span class="num" id="inv-tax">0.000</span></strong>
+        <strong class="ms-auto">الإجمالي النهائي: <span class="num" id="inv-total" style="font-size:1.1rem;font-weight:700">0.000</span></strong>
+      </div>
       <button class="btn btn-gold" type="submit">حفظ الفاتورة</button>
     </div>
   </form>
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/forms.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/forms.js') }}?v=4"></script>
 {% endblock %}

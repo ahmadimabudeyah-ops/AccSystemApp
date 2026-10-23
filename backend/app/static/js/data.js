@@ -195,6 +195,8 @@
       const keys = table ? [...table.querySelectorAll("thead th[data-key]")].map((th) => ({
         key: th.dataset.key, num: th.hasAttribute("data-num"), badge: th.hasAttribute("data-badge") })) : [];
       const detail = tbody.dataset.detail;
+      let extraAct = [];
+      try { extraAct = JSON.parse(tbody.dataset.extra || "[]"); } catch (e) { extraAct = []; }
       tbody.innerHTML = list.map((r) => {
         let tds;
         if (keys.length) {
@@ -231,6 +233,12 @@
         } else {
           tds = renderers[kind](r).map((c) => `<td>${c}</td>`).join("");
           if (detail && r.id) tds += `<td><a href="${detail}/${r.id}" aria-label="عرض">عرض</a></td>`;
+        }
+        if (extraAct.length && r.id) {
+          tds += `<td>${extraAct.map((a) => {
+            const href = esc(String(a.url || "").replace("{id}", r.id));
+            return `<a class="btn btn-${esc(a.style || "ghost")} btn-icon" href="${href}" aria-label="${esc(a.label)}" title="${esc(a.label)}"><i class="fa-solid ${esc(a.icon)}"></i></a>`;
+          }).join(" ")}</td>`;
         }
         return `<tr>${tds}</tr>`;
       }).join("");

@@ -84,29 +84,82 @@
 
   /* ---- document forms: sales invoices + purchase bills with lines ---- */
   window.addInvLine = function () {
-    const tbody = document.querySelector("#inv-lines tbody");
+    const tbody = document.querySelector("#inv-lines-body");
+    if (!tbody) return;
     const clone = tbody.rows[0].cloneNode(true);
-    clone.querySelectorAll("input").forEach((i) => { i.value = i.name === "qty" ? 1 : 0; });
+    clone.querySelectorAll("input").forEach((i) => {
+      if (i.classList.contains("line-code")) i.value = "";
+      else if (i.classList.contains("line-qty")) i.value = 1;
+      else i.value = 0;
+    });
     clone.querySelectorAll("select").forEach((s) => { s.selectedIndex = 0; });
+    const totalCell = clone.querySelector("td.line-total");
+    if (totalCell) totalCell.textContent = "0.000";
     tbody.appendChild(clone);
+    renumberLines(tbody);
+    attachLineListeners(clone);
     invTotal();
   };
-  window.invTotal = function () {
-    let t = 0;
-    document.querySelectorAll("#inv-lines tbody tr").forEach((tr) => {
-      const q = parseFloat(tr.querySelector('input[name="qty"]')?.value || 0);
-      const p = parseFloat(tr.querySelector('input[name="price"]')?.value || 0);
-      const d = parseFloat(tr.querySelector('input[name="disc"]')?.value || 0);
-      let rate = 0;
-      const taxSel = tr.querySelector('select[name="tax"]');
-      if (taxSel && taxSel.selectedOptions.length) {
-        rate = parseFloat(taxSel.selectedOptions[0].dataset.rate || 0);
-      }
-      const net = q * p * (1 - d / 100);
-      t += net * (1 + rate / 100);
+  window.removeInvLine = function (btn) {
+    const tr = btn.closest("tr");
+    const tbody = tr.parentElement;
+    if (tbody.rows.length <= 1) { window.toast("يجب أن يحوي الفاتورة سطرًا واحدًا على الأقل", "error"); return; }
+    tr.remove();
+    renumberLines(tbody);
+    invTotal();
+  };
+  function renumberLines(tbody) {
+    Array.from(tbody.rows).forEach((tr, i) => {
+      const noCell = tr.querySelector(".line-no");
+      if (noCell) noCell.textContent = i + 1;
     });
-    const el = document.getElementById("inv-total");
-    if (el) el.textContent = t.toFixed(3);
+  }
+  function attachLineListeners(tr) {
+    const prodSel = tr.querySelector("select.line-product");
+    const codeInput = tr.querySelector("input.line-code");
+    if (prodSel && codeInput) {
+      prodSel.removeEventListener("change", onProductChange);
+      prodSel.addEventListener("change", onProductChange);
+      function onProductChange() {
+        const opt = prodSel.options[prodSel.selectedIndex];
+        codeInput.value = opt ? (opt.dataset.code || "") : "";
+        invTotal();
+      }
+    }
+    tr.querySelectorAll("input.line-qty, input.line-price, input.line-disc, select.line-tax").forEach((el) => {
+      el.addEventListener("input", invTotal);
+      el.addEventListener("change", invTotal);
+    });
+  }
+  function lineRate(tr) {
+    const taxSel = tr.querySelector("select.line-tax");
+    if (!taxSel || !taxSel.selectedOptions.length) return 0;
+    return parseFloat(taxSel.selectedOptions[0].dataset.rate || 0);
+  }
+  window.invTotal = function () {
+    const tbody = document.querySelector("#inv-lines-body");
+    if (!tbody) return;
+    let sub = 0, taxSum = 0, grand = 0;
+    Array.from(tbody.rows).forEach((tr) => {
+      const q = parseFloat(tr.querySelector("input.line-qty")?.value || 0);
+      const p = parseFloat(tr.querySelector("input.line-price")?.value || 0);
+      const d = parseFloat(tr.querySelector("input.line-disc")?.value || 0);
+      const rate = lineRate(tr);
+      const net = q * p * (1 - d / 100);
+      const tax = net * (rate / 100);
+      const total = net + tax;
+      const totalCell = tr.querySelector("td.line-total");
+      if (totalCell) totalCell.textContent = total.toFixed(3);
+      sub += net;
+      taxSum += tax;
+      grand += total;
+    });
+    const elSub = document.getElementById("inv-subtotal");
+    const elTax = document.getElementById("inv-tax");
+    const elTot = document.getElementById("inv-total");
+    if (elSub) elSub.textContent = sub.toFixed(3);
+    if (elTax) elTax.textContent = taxSum.toFixed(3);
+    if (elTot) elTot.textContent = grand.toFixed(3);
   };
   async function fillDocOptions(form) {
     const eid = storeGet("entity_id");
@@ -156,30 +209,32 @@
         } catch (err) { window.toast("تعذر الاتصال بالخادم", "error"); pSel.value = ""; }
       });
     }
-    const pOpts = products.map((p) => `<option value="${p.id}">${p.code} — ${p.name_ar}</option>`).join("");
-    form.querySelectorAll('select[name="product"]').forEach((s) => { s.innerHTML = pOpts; });
+    const pOpts = products.map((p) => `<option value="${p.id}" data-code="${escAttr(p.code || "")}">${escAttr(p.code || "")} — ${escAttr(p.name_ar)}</option>`).join("");
+    form.querySelectorAll('select.line-product').forEach((s) => { s.innerHTML = pOpts; });
     const tOpts = `<option value="" data-rate="0">بلا</option>` +
-      (taxes.map ? taxes.map((t) => `<option value="${t.id}" data-rate="${t.rate || 0}">${t.code} ${t.rate}%</option>`).join("") : "");
-    form.querySelectorAll('select[name="tax"]').forEach((s) => { s.innerHTML = tOpts; });
+      (taxes.map ? taxes.map((t) => `<option value="${t.id}" data-rate="${t.rate || 0}">${escAttr(t.code || "")} ${t.rate}%</option>`).join("") : "");
+    form.querySelectorAll('select.line-tax').forEach((s) => { s.innerHTML = tOpts; });
   }
   document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("invoice-form");
     if (!form || !storeGet("access_token")) return;
     fillDocOptions(form);
     form.addEventListener("input", invTotal);
+    const firstLine = document.querySelector("#inv-lines-body tr");
+    if (firstLine) { attachLineListeners(firstLine); invTotal(); }
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const kind = form.dataset.kind;
       const fd = new FormData(form);
       const lines = [];
-      document.querySelectorAll("#inv-lines tbody tr").forEach((tr) => {
-        const pid = tr.querySelector('select[name="product"]').value;
-        const qty = parseFloat(tr.querySelector('input[name="qty"]').value || 0);
-        const price = parseFloat(tr.querySelector('input[name="price"]').value || 0);
+      document.querySelectorAll("#inv-lines-body tr").forEach((tr) => {
+        const pid = tr.querySelector('select.line-product').value;
+        const qty = parseFloat(tr.querySelector('input.line-qty').value || 0);
+        const price = parseFloat(tr.querySelector('input.line-price').value || 0);
         if (!pid || qty <= 0) return;
         const line = { product_id: pid, qty, unit_price: price };
-        const disc = tr.querySelector('input[name="disc"]');
-        const tax = tr.querySelector('select[name="tax"]');
+        const disc = tr.querySelector('input.line-disc');
+        const tax = tr.querySelector('select.line-tax');
         if (disc) line.discount_pct = parseFloat(disc.value || 0);
         if (tax && tax.value) line.tax_id = tax.value;
         lines.push(line);
@@ -195,7 +250,8 @@
         ? { entity_id: sessionStorage.getItem("entity_id"), customer_id: fd.get("customer_id"),
             invoice_date: fd.get("invoice_date"),
             payment_term_days: termInput ? parseInt(termInput.value || 30, 10) : (parseInt(fd.get("payment_term_days") || 30, 10)),
-            currency_id, exchange_rate, lines }
+            currency_id, exchange_rate, lines,
+            reference: fd.get("reference") || undefined }
         : { entity_id: sessionStorage.getItem("entity_id"), supplier_id: fd.get("customer_id"),
             bill_date: fd.get("invoice_date"), supplier_ref: fd.get("supplier_ref"),
             currency_id, exchange_rate, lines };

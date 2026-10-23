@@ -123,6 +123,11 @@ def create_asset():
         return denied
     data = request.get_json(force=True)
     me = uuid.UUID(str(get_jwt().get("sub")))
+    dup = db.session.query(Asset).filter_by(
+        tenant_id=uuid.UUID(str(g.tenant_id)), code=data["code"], is_deleted=False).first()
+    if dup is not None:
+        return jsonify({"error": {"code": "DUPLICATE_CODE",
+                                  "message": f"Asset code already exists: {data['code']}"}}), 409
     a = Asset(tenant_id=uuid.UUID(str(g.tenant_id)), entity_id=uuid.UUID(str(data["entity_id"])),
               category_id=uuid.UUID(str(data["category_id"])), code=data["code"],
               name_ar=data["name_ar"],
@@ -142,10 +147,51 @@ def asset_detail(asset_id):
     if a is None or a.is_deleted or str(a.tenant_id) != str(g.tenant_id):
         return jsonify({"error": {"code": "NOT_FOUND"}}), 404
     return jsonify({"data": {"id": str(a.id), "code": a.code, "name_ar": a.name_ar,
+                             "category_id": str(a.category_id) if a.category_id else None,
+                             "acquisition_date": a.acquisition_date.isoformat() if a.acquisition_date else None,
                              "acquisition_cost": float(a.acquisition_cost),
+                             "residual_value": float(a.residual_value or 0),
+                             "location_text": a.location_text,
                              "accumulated_depreciation": float(a.accumulated_depreciation),
                              "net": float(a.acquisition_cost) - float(a.accumulated_depreciation),
                              "status": a.status}})
+
+
+@bp.put("/assets/<uuid:asset_id>")
+@jwt_required()
+def update_asset(asset_id):
+    denied = _deny("treasury.manage")
+    if denied:
+        return denied
+    a = db.session.get(Asset, asset_id)
+    if a is None or a.is_deleted or str(a.tenant_id) != str(g.tenant_id):
+        return jsonify({"error": {"code": "NOT_FOUND"}}), 404
+    data = request.get_json(force=True)
+    me = uuid.UUID(str(get_jwt().get("sub")))
+    if data.get("category_id"):
+        a.category_id = uuid.UUID(str(data["category_id"]))
+    if data.get("code"):
+        dup = db.session.query(Asset).filter(
+            Asset.tenant_id == uuid.UUID(str(g.tenant_id)),
+            Asset.code == data["code"], Asset.id != a.id,
+            Asset.is_deleted.is_(False)).first()
+        if dup is not None:
+            return jsonify({"error": {"code": "DUPLICATE_CODE",
+                                      "message": f"Asset code already exists: {data['code']}"}}), 409
+        a.code = data["code"]
+    if data.get("name_ar"):
+        a.name_ar = data["name_ar"]
+    if data.get("acquisition_date"):
+        a.acquisition_date = date.fromisoformat(data["acquisition_date"])
+    if data.get("acquisition_cost") is not None:
+        a.acquisition_cost = data["acquisition_cost"]
+    if data.get("residual_value") is not None:
+        a.residual_value = data["residual_value"]
+    if "location_text" in data:
+        a.location_text = data.get("location_text")
+    a.updated_by = me
+    db.session.commit()
+    return jsonify({"data": {"id": str(a.id), "code": a.code, "name_ar": a.name_ar}})
 
 
 @bp.post("/assets/depreciate-run")

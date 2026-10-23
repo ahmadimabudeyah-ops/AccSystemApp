@@ -159,9 +159,7 @@ def invoice_detail(i_id):
         active="sales-i", doc_kind="invoice", doc_id=i_id,
         actions=[{"label": "ترحيل", "api": True, "api_base": "/api/v1/sales/invoices",
                   "api_id": i_id, "api_action": "post", "style": "primary"},
-                 {"label": "إرسال إلكتروني", "api": True,
-                  "api_base": "/api/v1/sales/einvoicing/process",
-                  "api_action": "post"},
+                 {"label": "إرسال إلكتروني", "url": url_for("web_taxes.einvoicing")},
                  {"label": "طباعة", "url": url_for("web_sales.print_invoice", i_id=i_id)}],
         sections=[]))
 
@@ -172,7 +170,7 @@ def post_invoice(i_id):
     return redirect(url_for("web_sales.invoice_detail", i_id=i_id))
 
 
-@bp.post("/invoices/<uuid:i_id>/send")
+@bp.route("/invoices/<uuid:i_id>/send", methods=["GET", "POST"])
 def send_invoice(i_id):
     """Legacy route kept for compatibility.
 

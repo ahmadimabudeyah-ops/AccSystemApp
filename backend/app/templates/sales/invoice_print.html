@@ -48,7 +48,7 @@
       <span style="font-weight:700;border-top:1px solid #000;padding-top:6px">المجموع الكلي: <span id="d-grand">…</span></span>
     </div>
     <div style="margin-top:20px;color:#666;font-size:13px">
-      شكراً لتعاملاتكم — هذه الفاتورةligeة عبر نظام المحاسبة.
+      شكراً لتعاملاتكم — هذه الفاتورة صادرة عبر نظام المحاسبة.
     </div>
   </div>
 </div>
@@ -57,7 +57,21 @@
   var root = document.getElementById("inv-print");
   if (!root) return;
   var id = root.dataset.id;
-  var headers = window.apiHeaders ? window.apiHeaders() : {};
+  function sGet(k){
+    try { if (window.__store) return window.__store.get(k); } catch(e){}
+    try { var v = localStorage.getItem(k); if (v !== null) return v; } catch(e){}
+    try { return sessionStorage.getItem(k); } catch(e){ return null; }
+  }
+  var headers = {};
+  var token = sGet("access_token");
+  if (token) headers["Authorization"] = "Bearer " + token;
+  var tenant = sGet("tenant_id");
+  if (tenant) headers["X-Tenant-ID"] = tenant;
+  if (!token) {
+    document.getElementById("inv-lines").innerHTML =
+      "<tr><td colspan='5' style='color:#c00;text-align:center'>انتهت الجلسة — <a href='/login'>سجّل الدخول</a> ثم أعد فتح الطباعة</td></tr>";
+    return;
+  }
   fetch("/api/v1/sales/invoices/" + id, {headers: headers}).then(function(r){return r.json();}).then(function(res){
     var d = res.data || res;
     document.getElementById("d-no").textContent = d.doc_number || "";
@@ -69,30 +83,21 @@
     document.getElementById("d-sub").textContent = (d.subtotal || 0).toFixed(3);
     document.getElementById("d-tax").textContent = (d.tax_total || 0).toFixed(3);
     document.getElementById("d-grand").textContent = (d.grand_total || 0).toFixed(3);
-    // جلب البنود من نفس الاستجابة إن وجدت، وإلا استدعاء سطر التفاصيل
-    var lines = d.lines || [];
     var tbody = document.getElementById("inv-lines");
+    var lines = d.lines || [];
     tbody.innerHTML = "";
     if (!lines.length) {
-      // محاولة جلب الأسطر عبر endpoint منفصل إن توفرت
-      fetch("/api/v1/sales/invoices/" + id + "/lines", {headers: headers}).then(function(r){return r.json();}).then(function(r2){
-        lines = r2.data || r2.lines || [];
-        renderLines(lines);
-      }).catch(function(){ renderLines([]); });
-    } else {
-      renderLines(lines);
+      tbody.innerHTML = "<tr><td colspan='5' style='text-align:center;color:#999'>لا بنود</td></tr>";
+      return;
     }
-    function renderLines(lines){
-      tbody.innerHTML = "";
-      lines.forEach(function(l,i){
-        var tr = document.createElement("tr");
-        tr.innerHTML = "<td class='num'>"+(i+1)+"</td><td>"+(l.product_name||l.description||"")+"</td>" +
-          "<td class='num'>"+(l.qty||0).toFixed(3)+"</td>" +
-          "<td class='num'>"+(l.unit_price||0).toFixed(3)+"</td>" +
-          "<td class='num'>"+(l.line_total||((l.qty||0)*(l.unit_price||0))).toFixed(3)+"</td>";
-        tbody.appendChild(tr);
-      });
-    }
+    lines.forEach(function(l,i){
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td class='num'>"+(i+1)+"</td><td>"+(l.product_name||l.description||"")+"</td>" +
+        "<td class='num'>"+(l.qty||0).toFixed(3)+"</td>" +
+        "<td class='num'>"+(l.unit_price||0).toFixed(3)+"</td>" +
+        "<td class='num'>"+(l.line_total||((l.qty||0)*(l.unit_price||0))).toFixed(3)+"</td>";
+      tbody.appendChild(tr);
+    });
   }).catch(function(){
     document.getElementById("inv-lines").innerHTML = "<tr><td colspan='5' style='color:#c00'>تعذر تحميل بيانات الفاتورة</td></tr>";
   });
