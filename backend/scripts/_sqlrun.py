@@ -35,6 +35,25 @@ def owner_and_url() -> tuple[str, str, str, str, str]:
     return url, host, port, database, p.username or "accounting"
 
 
+def run_python(url: str, sql_path: str) -> int:
+    """Fallback for hosts without psql (e.g. Render Shell)."""
+    import psycopg2
+
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    with open(sql_path, encoding="utf-8") as fh:
+        sql = fh.read()
+    conn = psycopg2.connect(url)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+    finally:
+        conn.close()
+    print("OK (python driver)")
+    return 0
+
+
 def main() -> int:
     sql_path = sys.argv[1]
     url, host, port, database, user = owner_and_url()
@@ -46,8 +65,8 @@ def main() -> int:
             if os.path.exists(cand):
                 psql = cand
                 break
-    if not psql:
-        raise SystemExit("psql not found")
+    if not psql or os.getenv("SQLRUN_FORCE_PYTHON") == "1":
+        return run_python(url, sql_path)
 
     # ask the DB which role owns the public schema, then run as that role
     q = subprocess.run([psql, "-U", user, "-h", host, "-p", port, "-d", database,

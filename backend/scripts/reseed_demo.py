@@ -41,7 +41,7 @@ WIPE = [
     "customer_return_lines", "customer_returns",
     "debit_note_lines", "debit_notes",
     "customer_invoice_taxes", "customer_invoice_lines", "customer_invoices",
-    "vendor_bill_lines", "vendor_bills", "bill_matches",
+    "vendor_bill_lines", "bill_matches", "vendor_bills",
     "goods_receipt_lines", "goods_receipts",
     "purchase_order_lines", "purchase_orders",
     "purchase_request_lines", "purchase_requests",
@@ -52,14 +52,14 @@ WIPE = [
     "stock_count_lines", "stock_counts",
     "stock_moves", "stock_quants",
     "cash_transactions", "transfers", "checks",
-    "bank_statement_lines", "bank_statements", "bank_reconciliation_lines",
-    "bank_reconciliations", "check_books",
+    "bank_reconciliation_lines", "bank_reconciliations",
+    "bank_statement_lines", "bank_statements", "check_books",
     "asset_depreciation_schedules", "asset_disposals", "asset_revaluations",
     "asset_transfers", "assets",
     "payslip_lines", "payslips", "payroll_runs", "salary_structure_lines",
     "employee_loans", "leave_requests", "leave_balances", "attendance_records",
     "employee_contracts",
-    "fee_installments", "fee_payments", "fee_contracts",
+    "fee_payments", "fee_installments", "fee_contracts",
     "project_costs", "project_revenues", "budget_lines", "budgets",
     "project_tasks", "project_phases", "projects",
     "tax_returns", "tax_payments", "recurring_entries", "notifications",
@@ -76,17 +76,20 @@ def wipe(tid: str) -> None:
     """Delete every transactional row for this tenant, in child -> parent order.
 
     The DELETE statements are written to a temp SQL file and executed by the
-    migration helper (scripts/_sqlrun.py) under the DB owner role, because the
-    immutability triggers (fn_forbid_posted_*) cannot be suspended by the
-    application role.  The demo dataset that follows is rebuilt through the real
-    service layer, so the resulting data is produced by exactly the same audit
-    path a client uses.
+    migration helper (scripts/_sqlrun.py) under the DB owner role. Triggers are
+    disabled per table as the table owner (works on Neon/Render without
+    superuser), because the immutability triggers (fn_forbid_posted_*) would
+    otherwise block deleting posted documents. The demo dataset that follows is
+    rebuilt through the real service layer, so the resulting data is produced by
+    exactly the same audit path a client uses.
     """
     import subprocess
     import tempfile
-    lines = ["BEGIN;", "SET session_replication_role = replica;"]
+    lines = ["BEGIN;"]
     for t in WIPE:
+        lines.append(f"ALTER TABLE {t} DISABLE TRIGGER USER;")
         lines.append(f"DELETE FROM {t} WHERE tenant_id = '{tid}';")
+        lines.append(f"ALTER TABLE {t} ENABLE TRIGGER USER;")
     lines.append("DELETE FROM doc_sequences WHERE tenant_id = '" + tid + "';")
     lines.append("COMMIT;")
     with tempfile.NamedTemporaryFile("w", suffix=".sql", delete=False,
