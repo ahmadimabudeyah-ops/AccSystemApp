@@ -179,6 +179,76 @@
   position: relative;
   z-index: 1;
 }
+
+/* --- تعزيز بصري مشابه لصفحة الدخول: أضواء متحركة + تدرج نصي ذهبي ---
+   يضيف عمقًا بصريًا على الشعار والعنوان دون تغيير منطق الأرقام. --- */
+.dash3d-hero::before {
+  animation: dash-aurora-a 18s ease-in-out infinite alternate;
+}
+.dash3d-hero::after {
+  animation: dash-aurora-b 22s ease-in-out infinite alternate;
+}
+@keyframes dash-aurora-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(14%, -12%, 0) scale(1.14); }
+}
+@keyframes dash-aurora-b {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-12%, 14%, 0) scale(1.12); }
+}
+.dash3d-hero h1 bdi {
+  background-image: linear-gradient(115deg, #F5EED9 0%, #C9A961 45%, #EBD9A8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  background-size: 220% 100%;
+  animation: dash-gradient-pan 9s ease-in-out infinite alternate;
+}
+@keyframes dash-gradient-pan {
+  from { background-position: 0% 50%; }
+  to   { background-position: 100% 50%; }
+}
+
+/* وسط أيقون زجاجي متحرك خفيف (إحساس فخم + حركة) */
+.dash3d-card .ico-tile::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 20px;
+  background: radial-gradient(circle, rgba(201, 169, 97, .28), transparent 65%);
+  animation: dash-aurora-a 14s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+/* توهج ينتقل بحركة بطاقة عند التمرير (كما في صفحة الدخول) */
+.dash3d-card:hover .ico-tile { box-shadow: 0 6px 0 var(--tile-edge, #8B6244), 0 16px 28px rgba(43, 29, 19, .28); }
+
+/* تأثير وسط أيقون يدوم مع نفس دوران الأضواء */
+.dash3d-card:hover .ico-tile::before { opacity: .9; }
+
+/* زر ذهبي/أسريع يلمع خفيفًا كزر الدخول */
+.dash3d-hero .btn-gold,
+.dash3d-hero .btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+.dash3d-hero .btn-gold::after,
+.dash3d-hero .btn-primary::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 42%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .5), transparent);
+  transform: translateX(-220%) skewX(-18deg);
+  animation: dash-btn-shine 5.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes dash-btn-shine {
+  0%, 58% { transform: translateX(-220%) skewX(-18deg); }
+  84%, 100% { transform: translateX(420%) skewX(-18deg); }
+}
+
 .dash-basis {
   margin: -2px 0 12px;
   color: var(--text-soft);
