@@ -1,7 +1,7 @@
 {% extends "layouts/dashboard.html" %}
 {% block title %}لوحة التحكم{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard-3d.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard-3d.css') }}?v=2">
 
 {# ====== بطاقة الترحيب العميقة ====== #}
 <div class="dash3d-hero mb-3">
@@ -13,6 +13,7 @@
         <span class="badge role-general" id="dash-entity">…</span>
         <span class="badge role-unclassified" id="dash-cur">…</span>
       </div>
+      <p id="dash-asof" class="dash-asof" aria-live="polite"></p>
     </div>
     <div class="d-flex gap-2">
       <a href="{{ url_for('web_entries.new') }}" class="btn btn-gold">+ قيد جديد</a>
@@ -104,6 +105,7 @@
   <span style="width:10px;height:10px;border-radius:3px;background:var(--gradient-gold);box-shadow:0 2px 4px rgba(201,169,97,.5);transform:rotate(45deg);display:inline-block"></span>
   الأداء
 </h3>
+<p class="dash-basis">الأرقام من القيود المرحّلة فقط؛ القيود المعكوسة تُطرح تلقائيًا، والقيود المستقبلية لا تُحتسب قبل تاريخها.</p>
 <div class="row g-3 mb-3">
   {# الإيرادات #}
   <div class="col-md-6 col-xl-3">
@@ -112,7 +114,7 @@
         <svg class="ico-svg" viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 2.4 1 4.4 2.8 5.8L7 22h10l-.8-7.2C18 13.4 19 11.4 19 9c0-4-3-7-7-7z"/><path d="M9 10h6M9 13h6M12 7v9"/></svg>
       </div>
       <div>
-        <div class="stat-label">الإيرادات المرحلة</div>
+        <div class="stat-label">صافي الإيرادات المرحلة</div>
         <div class="stat-value num" id="stat-revenue">…</div>
       </div>
     </div>
@@ -124,7 +126,7 @@
         <svg class="ico-svg" viewBox="0 0 24 24"><path d="M6 2h12a1 1 0 0 1 1 1v18l-3-2-2 2-2-2-2 2-2-2-3 2V3a1 1 0 0 1 1-1z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
       </div>
       <div>
-        <div class="stat-label">المصروفات المرحلة</div>
+        <div class="stat-label">صافي المصروفات المرحلة</div>
         <div class="stat-value num" id="stat-expenses">…</div>
       </div>
     </div>
@@ -211,14 +213,15 @@
 <div class="row g-3 mt-1">
   <div class="col-xl-8">
     <div class="dash3d-panel">
-      <h3><span class="ico-dot"></span>المبيعات الشهرية</h3>
+      <h3><span class="ico-dot"></span>صافي الإيرادات الشهرية</h3>
       <canvas id="sales-chart" height="120"></canvas>
     </div>
   </div>
   <div class="col-xl-4">
     <div class="dash3d-panel">
-      <h3><span class="ico-dot"></span>توزيع الإيرادات</h3>
+      <h3><span class="ico-dot"></span><span id="revenue-mix-title">توزيع الإيرادات</span></h3>
       <canvas id="revenue-chart" height="180"></canvas>
+      <p id="revenue-mix-note" class="chart-note" hidden></p>
     </div>
   </div>
 </div>

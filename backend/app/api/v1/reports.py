@@ -97,7 +97,18 @@ def dashboard_summary():
     denied = _deny()
     if denied:
         return denied
-    data = balance_service.get_dashboard_summary(uuid.UUID(str(request.args["entity_id"])))
+    if not request.args.get("entity_id"):
+        return jsonify({"error": {"code": "ENTITY_REQUIRED",
+                                  "message": "entity_id is required"}}), 400
+    try:
+        eid = uuid.UUID(str(request.args["entity_id"]))
+    except ValueError:
+        return jsonify({"error": {"code": "BAD_ENTITY_ID"}}), 400
+    from ...services.errors import NotFoundError
+    try:
+        data = balance_service.get_dashboard_summary(eid, g.tenant_id)
+    except NotFoundError as exc:
+        return jsonify({"error": {"code": exc.code, "message": str(exc)}}), exc.status
     return jsonify({"data": data})
 
 

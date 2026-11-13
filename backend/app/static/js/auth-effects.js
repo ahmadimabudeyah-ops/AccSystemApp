@@ -187,4 +187,33 @@
       if (!raf) raf = requestAnimationFrame(animateScene);
     });
   }
+
+  /* ------------------------------------------------------------------
+     عمق ثلاثي الأبعاد لبطاقة الدخول: ميلان خفيف يتبع المؤشر
+     ------------------------------------------------------------------ */
+  var authCard = document.querySelector(".auth-card");
+  if (authCard) {
+    /* حركة الدخول تملأ transform للأمام وتمنع تأثير hover، فنزيلها
+       بعد انتهائها فقط — لا نلغي الحركة نفسها. */
+    authCard.addEventListener("animationend", function (e) {
+      if (e.target !== authCard) return;
+      authCard.style.animation = "none";
+    }, { once: true });
+
+    if (!reduceMotion && window.matchMedia("(pointer: fine)").matches) {
+      authCard.addEventListener("pointermove", function (e) {
+        var rect = authCard.getBoundingClientRect();
+        var x = (e.clientX - rect.left) / Math.max(rect.width, 1) - 0.5;
+        var y = (e.clientY - rect.top) / Math.max(rect.height, 1) - 0.5;
+        var ry = Math.max(-6, Math.min(6, x * 7));
+        var rx = Math.max(-6, Math.min(6, -y * 6));
+        authCard.style.setProperty("--auth-rx", rx.toFixed(2) + "deg");
+        authCard.style.setProperty("--auth-ry", ry.toFixed(2) + "deg");
+      });
+      authCard.addEventListener("pointerleave", function () {
+        authCard.style.setProperty("--auth-rx", "0deg");
+        authCard.style.setProperty("--auth-ry", "0deg");
+      });
+    }
+  }
 })();

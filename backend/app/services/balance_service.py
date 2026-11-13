@@ -379,10 +379,24 @@ def get_income_statement(period_id: uuid.UUID) -> dict:
     return _statement(period_id, "PL")
 
 
-def get_dashboard_summary(entity_id: uuid.UUID) -> dict:
-    """ملخص اللوحة: إيراد/مصروف/ربح (مرحّل) + أشهر الستة الأخيرة."""
+def get_dashboard_summary(entity_id: uuid.UUID, tenant_id: uuid.UUID | None = None) -> dict:
+    """ملخص اللوحة: صافي الإيراد/المصروف/الربح (مرحّل) + آخر الأشهر النشطة.
+
+    جميع الأرقام من القيود المرحّلة/المعكوسة فقط. القيد المعكوس يبقى محسوبًا
+    مع قيد العكس المقابل له، لذلك صافي الأصل = صفر. تُستثنى القيود المستقبلية
+    حتى يكون الرقم مطابقًا لتاريخ ``as_of`` المعروض في الواجهة.
+    """
     from sqlalchemy import text as _text
     from datetime import date as _date
+    from .errors import NotFoundError
+
+    entity = db.session.execute(_text(
+        "SELECT tenant_id, functional_currency FROM entities "
+        "WHERE id = :en AND is_deleted = FALSE"), {"en": entity_id}).first()
+    if entity is None or (tenant_id is not None and str(entity[0]) != str(tenant_id)):
+        raise NotFoundError("Entity not found")
+    cur = entity[1]
+
     rows = db.session.execute(_text(
         "SELECT a.account_type, date_trunc('month', e.posting_date)::date AS m, "
         "SUM(l.credit - l.debit)::float AS net "
@@ -390,67 +404,90 @@ def get_dashboard_summary(entity_id: uuid.UUID) -> dict:
         "JOIN accounts a ON a.id = l.account_id "
         "WHERE e.entity_id = :en AND e.status IN ('posted','reversed') "
         "AND e.is_deleted = FALSE AND l.is_deleted = FALSE "
+        "AND e.posting_date <= CURRENT_DATE "
         "GROUP BY 1, 2 ORDER BY 2"), {"en": entity_id}).all()
-    revenue = sum(r[2] for r in rows if r[0] in ("income",))
-    expenses = -sum(r[2] for r in rows if r[0] in ("expense", "contra_income"))
+
+    # الإيراد بالطبيعة الدائنة: income موجب، وcontra_income سالب (خصومات/مردودات).
+    gross_revenue = sum(r[2] for r in rows if r[0] == "income")
+    contra_income = sum(r[2] for r in rows if r[0] == "contra_income")
+    revenue = gross_revenue + contra_income
+    # المصروف بالطبيعة المدينة: expense سالب، وcontra_expense موجب (يخفض المصروف).
+    expenses = -sum(r[2] for r in rows if r[0] in ("expense", "contra_expense"))
+    profit = revenue - expenses
+
     months: dict[str, float] = {}
     for _type, m, net in rows:
-        if _type == "income" and m:
-            months[m.isoformat()[:7]] = months.get(m.isoformat()[:7], 0.0) + net
+        if _type in ("income", "contra_income") and m:
+            key = m.isoformat()[:7]
+            months[key] = months.get(key, 0.0) + net
     last6 = sorted(months)[-6:]
+
     pending = db.session.execute(_text(
         "SELECT (SELECT count(*) FROM journal_entries WHERE entity_id = :en AND status = 'draft' AND is_deleted = FALSE), "
         "(SELECT count(*) FROM customer_invoices i JOIN parties p ON p.id = i.customer_id "
-        " WHERE p.entity_id = :en AND i.status IN ('posted','partially_paid') AND i.remaining_amount > 0 "
-        " AND i.due_on < CURRENT_DATE AND i.is_deleted = FALSE)"),
+        " WHERE p.entity_id = :en AND i.status IN ('posted','partially_paid','disputed') "
+        " AND i.remaining_amount > 0 AND i.due_on < CURRENT_DATE AND i.is_deleted = FALSE)"),
         {"en": entity_id}).first()
     mix = db.session.execute(_text(
-        "SELECT a.name_ar, SUM(l.credit - l.debit)::float AS net "
+        "SELECT a.name_ar, a.account_type, SUM(l.credit - l.debit)::float AS net "
         "FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id "
         "JOIN accounts a ON a.id = l.account_id "
         "WHERE e.entity_id = :en AND e.status IN ('posted','reversed') "
         "AND e.is_deleted = FALSE AND l.is_deleted = FALSE "
+        "AND e.posting_date <= CURRENT_DATE "
         "AND a.account_type IN ('income','contra_income') "
-        "GROUP BY 1 ORDER BY 2 DESC"), {"en": entity_id}).all()
-    top = [(n or "؟", round(v or 0, 3)) for n, v in mix if (v or 0) > 0][:3]
-    others = round(sum(v for _, v in [(n, v) for n, v in mix if (v or 0) > 0][3:]), 3)
+        "GROUP BY 1, 2 ORDER BY 3 DESC"), {"en": entity_id}).all()
+    income_mix = sorted(
+        [((n or "؟"), round(v or 0, 3)) for n, t, v in mix
+         if t == "income" and (v or 0) > 0],
+        key=lambda item: item[1], reverse=True)
+    top = income_mix[:3]
+    others = round(sum(v for _, v in income_mix[3:]), 3)
     if others > 0:
         top.append(("أخرى", others))
-    cur = db.session.execute(_text(
-        "SELECT functional_currency FROM entities WHERE id = :en"), {"en": entity_id}).scalar()
+    mix_total = round(sum(v for _, v in top), 3)
+    discounts = round(-contra_income, 3)
     cash = db.session.execute(_text(
         "SELECT COALESCE(SUM(l.debit - l.credit),0)::float FROM journal_lines l "
         "JOIN journal_entries e ON e.id = l.entry_id JOIN accounts a ON a.id = l.account_id "
         "WHERE e.entity_id = :en AND e.status IN ('posted','reversed') "
         "AND e.is_deleted = FALSE AND l.is_deleted = FALSE "
+        "AND e.posting_date <= CURRENT_DATE "
         "AND (a.code LIKE '101%' OR a.code LIKE '102%')"), {"en": entity_id}).scalar() or 0.0
 
-    def _direct(code):
+    def _prefix_balance(code: str) -> float:
+        """رصيد حساب رقابي وكل فروعه (1210*، 2010*) لا الحساب الأب وحده."""
         return db.session.execute(_text(
             "SELECT COALESCE(SUM(l.debit - l.credit),0)::float FROM journal_lines l "
             "JOIN journal_entries e ON e.id = l.entry_id JOIN accounts a ON a.id = l.account_id "
             "WHERE e.entity_id = :en AND e.status IN ('posted','reversed') "
-            "AND e.is_deleted = FALSE AND l.is_deleted = FALSE AND a.code = :c"),
-            {"en": entity_id, "c": code}).scalar() or 0.0
+            "AND e.is_deleted = FALSE AND l.is_deleted = FALSE "
+            "AND e.posting_date <= CURRENT_DATE AND a.code LIKE :c"),
+            {"en": entity_id, "c": code + "%"}).scalar() or 0.0
 
     overdue_list = db.session.execute(_text(
         "SELECT i.doc_number, p.name_ar, i.due_on::text, i.remaining_amount::float, "
         "(CURRENT_DATE - i.due_on) AS late_days FROM customer_invoices i "
         "JOIN parties p ON p.id = i.customer_id "
-        "WHERE p.entity_id = :en AND i.status IN ('posted','partially_paid') "
+        "WHERE p.entity_id = :en AND i.status IN ('posted','partially_paid','disputed') "
         "AND i.remaining_amount > 0 AND i.due_on < CURRENT_DATE AND i.is_deleted = FALSE "
         "ORDER BY i.due_on LIMIT 5"), {"en": entity_id}).all()
-    return {"revenue": round(revenue, 3), "expenses": round(expenses, 3),
-            "profit": round(revenue - expenses, 3),
+    return {"revenue": round(revenue, 3), "gross_revenue": round(gross_revenue, 3),
+            "discounts": discounts, "expenses": round(expenses, 3),
+            "profit": round(profit, 3),
             "cash": round(cash, 3),
-            "receivables": round(_direct("1210"), 3),
-            "payables": round(-_direct("2010"), 3),
+            "receivables": round(_prefix_balance("1210"), 3),
+            "payables": round(-_prefix_balance("2010"), 3),
             "overdue_list": [{"doc": r[0], "customer": r[1], "due_on": r[2],
                               "remaining": float(r[3]), "late_days": int(r[4] or 0)}
                              for r in overdue_list],
             "months": last6, "monthly_revenue": [round(months[m], 3) for m in last6],
-            "revenue_mix": {"labels": [n for n, _ in top], "values": [v for _, v in top]},
+            "revenue_mix": {"labels": [n for n, _ in top], "values": [v for _, v in top],
+                            "basis": "gross_income", "gross_revenue": round(gross_revenue, 3),
+                            "discounts": discounts, "net_revenue": round(revenue, 3),
+                            "adjustments": round(revenue - mix_total, 3)},
             "functional_currency": cur or "JOD",
             "pending_drafts": pending[0] if pending else 0,
             "overdue_invoices": pending[1] if pending else 0,
+            "basis": "posted_entries",
             "as_of": _date.today().isoformat()}

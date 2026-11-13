@@ -3,6 +3,26 @@
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
+  const NUM_FMT = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  function fmtNum(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? NUM_FMT.format(n) : "—";
+  }
+  function fmtMoney(v, cur) {
+    return fmtNum(v) + (cur ? " " + cur : "");
+  }
+  function fmtInt(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? String(Math.trunc(n)) : "—";
+  }
+  function fmtDateAr(iso) {
+    if (!iso) return "";
+    const d = new Date(String(iso) + "T00:00:00");
+    if (Number.isNaN(d.getTime())) return String(iso);
+    return d.toLocaleDateString("ar-EG", { day: "numeric", month: "long", year: "numeric" });
+  }
   let _refreshP = null;
   let _loginRedirected = false;
   function goLogin(msg) {
@@ -64,9 +84,15 @@
   function badge(status) {
     const map = { posted: "posted", paid: "posted", active: "posted", done: "posted",
       approved: "approved", sent: "approved", draft: "draft", pending: "pending",
-      partially_paid: "partial", cancelled: "cancelled", rejected: "cancelled", overdue: "cancelled" };
-    const safe = String(status == null ? "" : status).replace(/[<>&"']/g, "");
-    return '<span class="badge badge-' + (map[status] || "draft") + '">' + safe + "</span>";
+      partially_paid: "partial", cancelled: "cancelled", rejected: "cancelled",
+      overdue: "cancelled", reversed: "cancelled", disputed: "partial" };
+    const labels = { posted: "مرحّل", paid: "مدفوع", active: "نشط", done: "مكتمل",
+      approved: "معتمد", sent: "مرسل", draft: "مسودة", pending: "معلّق",
+      partially_paid: "مدفوع جزئيًا", cancelled: "ملغى", rejected: "مرفوض",
+      overdue: "متأخر", reversed: "معكوس", disputed: "متنازع عليه" };
+    const key = String(status == null ? "" : status);
+    return '<span class="badge badge-' + (map[key] || "draft") + '">' +
+      esc(labels[key] || key || "—") + "</span>";
   }
   const AR = {
     account_type: { asset: "أصول", liability: "التزامات", equity: "حقوق ملكية",
@@ -250,23 +276,30 @@
     try {
       document.getElementById("dash-date").textContent =
         new Date().toLocaleDateString("ar-EG", { dateStyle: "full" });
+      const heroTitle = document.querySelector(".dash3d-hero h1");
+      if (heroTitle) {
+        const hour = new Date().getHours();
+        heroTitle.innerHTML = (hour < 12 ? "صباح الخير" : "مساء الخير") + '، <bdi>المدير</bdi>';
+      }
     } catch (e) { /* ignore */ }
     if (!sGet("access_token")) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     try {
       const eid = await getEntity();
       if (!eid) return;
       const s = await api(`/api/v1/reports/dashboard-summary?entity_id=${eid}`);
       const cur = s.functional_currency || "JOD";
-      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-      set("stat-revenue", `${s.revenue} ${cur}`);
-      set("stat-expenses", `${s.expenses} ${cur}`);
-      set("stat-profit", `${s.profit} ${cur}`);
-      set("stat-cash", `${s.cash} ${cur}`);
-      set("stat-recv", `${s.receivables} ${cur}`);
-      set("stat-pay", `${s.payables} ${cur}`);
-      set("stat-drafts", s.pending_drafts);
-      set("stat-overdue", s.overdue_invoices);
+      const money = (v) => fmtMoney(v, cur);
+      set("stat-revenue", money(s.revenue));
+      set("stat-expenses", money(s.expenses));
+      set("stat-profit", money(s.profit));
+      set("stat-cash", money(s.cash));
+      set("stat-recv", money(s.receivables));
+      set("stat-pay", money(s.payables));
+      set("stat-drafts", fmtInt(s.pending_drafts));
+      set("stat-overdue", fmtInt(s.overdue_invoices));
       set("dash-cur", cur);
+      set("dash-asof", s.as_of ? `محدّث حتى ${fmtDateAr(s.as_of)}` : "");
       try {
         const tid = JSON.parse(atob(sGet("access_token").split(".")[1])).tenant_id;
         if (tid) {
@@ -276,20 +309,35 @@
           if (mine) set("dash-entity", `${mine.code} — ${mine.name_ar || ""}`);
         }
       } catch (e) { /* ignore */ }
+      const mixTitle = document.getElementById("revenue-mix-title");
+      const mixNote = document.getElementById("revenue-mix-note");
+      if (mixNote) {
+        const mix = s.revenue_mix || {};
+        const adj = Number(mix.adjustments || 0);
+        if (Math.abs(adj) >= 0.005) {
+          mixNote.hidden = false;
+          mixNote.textContent =
+            `إجمالي ${money(mix.gross_revenue)} · خصومات ${money(s.discounts)} · صافي ${money(s.revenue)}`;
+          if (mixTitle) mixTitle.textContent = "مصادر الإيرادات (إجمالي)";
+        } else {
+          mixNote.hidden = true;
+          if (mixTitle) mixTitle.textContent = "توزيع الإيرادات";
+        }
+      }
       const orows = document.getElementById("overdue-rows");
       if (orows) {
         const list = s.overdue_list || [];
         orows.innerHTML = list.length
           ? list.map((o) => `<tr><td class="ltr">${esc(o.doc)}</td><td>${esc(o.customer)}</td>` +
-            `<td class="ltr">${esc(o.due_on)}</td><td class="num">${esc(o.remaining)}</td>` +
-            `<td class="num">${esc(o.late_days)}</td></tr>`).join("")
+            `<td class="ltr">${esc(o.due_on)}</td><td class="num">${esc(fmtMoney(o.remaining, cur))}</td>` +
+            `<td class="num">${esc(fmtInt(o.late_days))}</td></tr>`).join("")
           : `<tr><td colspan="5">لا فواتير متأخرة — ممتاز</td></tr>`;
       }
       const box = document.getElementById("alerts-box");
       if (box) {
         const items = [];
-        if (s.overdue_invoices > 0) items.push(`<div class="toast toast-error">${s.overdue_invoices} فواتير متأخرة تحتاج متابعة</div>`);
-        if (s.pending_drafts > 0) items.push(`<div class="toast">${s.pending_drafts} مسودات بانتظار الترحيل</div>`);
+        if (s.overdue_invoices > 0) items.push(`<div class="toast toast-error">${fmtInt(s.overdue_invoices)} فواتير متأخرة تحتاج متابعة</div>`);
+        if (s.pending_drafts > 0) items.push(`<div class="toast">${fmtInt(s.pending_drafts)} مسودات بانتظار الترحيل</div>`);
         box.innerHTML = items.length ? items.join("") : `<div class="toast">لا تنبيهات — الوضع سليم</div>`;
       }
       try {
@@ -307,14 +355,24 @@
     const tb = document.getElementById("recent-entries");
     if (!tb || !sGet("access_token")) return;
     try {
-      const res = await api("/api/v1/journal-entries");
+      const eid = await getEntity();
+      if (!eid) {
+        tb.innerHTML = `<tr><td colspan="4">لا يوجد كيان محدد لهذا المستخدم</td></tr>`;
+        return;
+      }
+      const res = await api(`/api/v1/journal-entries?entity_id=${eid}&page_size=5`);
       const raw = (res && res.data) || res || [];
       const list = (Array.isArray(raw) ? raw : []).slice(0, 5);
-      if (!list.length) return;
+      if (!list.length) {
+        tb.innerHTML = `<tr><td colspan="4">لا توجد قيود بعد — ابدأ بقيد جديد</td></tr>`;
+        return;
+      }
       tb.innerHTML = list.map((r) =>
-        `<tr><td>${r.official_number || "—"}</td><td>${(r.description || "").slice(0, 40)}</td>` +
-        `<td><span class="num">${r.total_debit}</span></td><td>${badge(r.status)}</td></tr>`).join("");
-    } catch (e) { /* ignore */ }
+        `<tr><td class="ltr">${esc(r.official_number || "—")}</td><td>${esc((r.description || "").slice(0, 40))}</td>` +
+        `<td><span class="num">${fmtNum(r.total_debit)}</span></td><td>${badge(r.status)}</td></tr>`).join("");
+    } catch (e) {
+      tb.innerHTML = `<tr><td colspan="4">تعذر تحميل القيود — <button type="button" class="btn btn-link" onclick="location.reload()">إعادة المحاولة</button></td></tr>`;
+    }
   }
   async function loadEntryDetail() {
     const root = document.getElementById("entry-detail");

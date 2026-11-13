@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block head %}
-<link href="{{ url_for('static', filename='css/auth.css') }}?v=3" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/auth.css') }}?v=4" rel="stylesheet">
 {% endblock %}
 {% block body %}
 <div class="auth-shell">
@@ -8,6 +8,7 @@
     <span class="auth-aurora auth-aurora-1"></span>
     <span class="auth-aurora auth-aurora-2"></span>
     <span class="auth-aurora auth-aurora-3"></span>
+    <span class="auth-grade" aria-hidden="true"></span>
     <canvas id="auth-particles" class="auth-particles" aria-hidden="true"></canvas>
 
     <div class="auth-stage-inner">
@@ -22,6 +23,7 @@
       <div class="auth-scene" aria-hidden="true">
         <div class="auth-scene-parallax" data-auth-parallax>
           <span class="auth-scene-halo"></span>
+          <span class="auth-dial" aria-hidden="true"></span>
           <span class="auth-ring auth-ring-1"></span>
           <span class="auth-ring auth-ring-2"></span>
           <span class="auth-ring auth-ring-3"></span>
@@ -124,5 +126,5 @@
   </main>
 </div>
 
-<script src="{{ url_for('static', filename='js/auth-effects.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/auth-effects.js') }}?v=3"></script>
 {% endblock %}

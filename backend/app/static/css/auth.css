@@ -1119,6 +1119,64 @@
   .auth-trust { margin-top: 14px; padding-top: 12px; }
 }
 
+/* ==========================================================================
+   تعزيز الهوية والحركة: شعار يُرسم، قرص دوّار، عمق للبطاقة
+   ========================================================================== */
+.auth-grade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(90% 60% at 18% 8%, rgba(255, 255, 255, .10), transparent 46%),
+    radial-gradient(110% 80% at 88% 96%, rgba(166, 123, 91, .30), transparent 54%);
+  mix-blend-mode: soft-light;
+}
+
+/* الشعار يُرسم stroke بعد دخول المشهد — لمسة موشن جرافيك خفيفة */
+.auth-emblem-mark .brand-mark path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: auth-draw 1.5s .55s cubic-bezier(.4, 0, .2, 1) forwards;
+}
+@keyframes auth-draw { to { stroke-dashoffset: 0; } }
+
+/* قرص قياس دوّار حول الختم يضيف عمقًا وحركة مستمرة */
+.auth-dial {
+  position: absolute;
+  inset: -9%;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: .8;
+  background: repeating-conic-gradient(from 0deg,
+    rgba(235, 217, 168, .42) 0deg .8deg,
+    transparent .8deg 6deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1px));
+  animation: auth-spin 90s linear infinite;
+}
+
+/* تدرج نص العنوان ينزلق ببطء فوق الذهبي */
+.auth-stage h2 em {
+  background-size: 240% 100%;
+  animation: auth-gradient-pan 7s ease-in-out infinite alternate;
+}
+@keyframes auth-gradient-pan {
+  from { background-position: 0% 50%; }
+  to   { background-position: 100% 50%; }
+}
+
+/* عمق ثلاثي الأبعاد للبطاقة مع حركة المؤشر (بعد انتهاء حركة الدخول) */
+.auth-card { transform-style: preserve-3d; }
+@media (pointer: fine) {
+  .auth-card:hover {
+    transform: perspective(1100px)
+      rotateX(var(--auth-rx, 0deg))
+      rotateY(var(--auth-ry, 0deg));
+    transition: transform .25s ease;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .auth-shell *,
   .auth-shell *::before,

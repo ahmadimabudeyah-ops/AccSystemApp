@@ -170,5 +170,62 @@
 }
 .dash3d-hero .btn-primary:hover { transform: translateY(-2px); }
 
+/* سطر مصدر البيانات وتاريخ التحديث */
+.dash3d-hero .dash-asof {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #D4B99A;
+  opacity: .88;
+  position: relative;
+  z-index: 1;
+}
+.dash-basis {
+  margin: -2px 0 12px;
+  color: var(--text-soft);
+  font-size: 11.5px;
+  line-height: 1.75;
+}
+.chart-note {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px dashed var(--brown-200);
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+/* الوضع الداكن */
+[data-theme="dark"] .dash3d-card,
+[data-theme="dark"] .dash3d-panel {
+  background: linear-gradient(160deg, #292524 0%, #1C1917 100%);
+  border-color: #57534E;
+}
+[data-theme="dark"] .dash3d-card .stat-value { color: #F2EBE3; text-shadow: none; }
+[data-theme="dark"] .dash3d-card .stat-label { color: #D6D3D1; }
+[data-theme="dark"] .chart-note { border-top-color: #57534E; }
+[data-theme="dark"] .qc-card {
+  background: #292524;
+  border-color: #57534E;
+}
+[data-theme="dark"] .qc-card .qc-title { color: #FAF7F4; }
+[data-theme="dark"] .qc-icon { background: #292524; border-color: #57534E; }
+
 /* جدول داخل بطاقة */
 .dash3d-panel .table-lux td, .dash3d-panel .table-lux th { font-size: 13.5px; }
+
+/* استجابة شريط الترحيب: الأزرار تنزل في صف مستقل على الجوال */
+.dash3d-hero .d-flex.justify-between { flex-wrap: wrap; row-gap: 12px; }
+.dash3d-hero .d-flex.gap-2 { flex-wrap: wrap; }
+@media (max-width: 767.98px) {
+  .dash3d-hero { padding: 22px 20px; }
+  .dash3d-hero h1 { font-size: 22px !important; }
+  .dash3d-hero p { margin-top: 2px !important; }
+  .dash3d-hero .d-flex.justify-between > div:last-child { width: 100%; }
+  .dash3d-hero .d-flex.justify-between > div:last-child .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding-inline: 12px;
+    font-size: 12.5px;
+  }
+}
