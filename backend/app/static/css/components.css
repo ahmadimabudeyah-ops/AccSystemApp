@@ -117,3 +117,19 @@ table.table-lux { width: 100%; border-collapse: collapse; font-family: var(--fon
 .tree-row.selected { background: var(--brown-100); }
 .type-asset { color: var(--success); } .type-liability { color: var(--danger); }
 .type-equity { color: var(--brown-600); } .type-income { color: var(--info); } .type-expense { color: var(--warning); }
+/* فوتر الموقع */
+.site-footer { margin-top: 28px; padding-top: 18px; border-top: 1px dashed var(--brown-200);
+  color: var(--text-soft); font-size: 12.5px; text-align: center; }
+.site-footer-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; }
+.site-footer-brand { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 7px; }
+.site-footer-brand::before { content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gradient-gold); box-shadow: 0 0 0 3px rgba(201, 169, 97, .14); }
+.site-footer-copy { color: var(--stone-400); }
+.site-footer-divider { color: var(--gold-500); font-size: 8px; line-height: 1; }
+.site-footer-credit { color: var(--brown-500); font-weight: 600; }
+.site-footer-credit strong { color: var(--brown-700); font-weight: 800; }
+.site-footer-credit .credit-and { margin-inline-start: 5px; color: var(--gold-600); font-weight: 900; font-size: .9em; }
+@media (max-width: 575.98px) {
+  .site-footer { font-size: 11.5px; }
+  .site-footer-divider { display: none; }
+}

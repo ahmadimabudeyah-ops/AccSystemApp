@@ -16,3 +16,7 @@
 [data-theme="dark"] .sidebar { background: var(--gradient-dark); }
 [data-theme="dark"] .tree-row:hover { background: #44403C; }
 [data-theme="dark"] .skeleton { background: linear-gradient(90deg, #44403C, #57534E, #44403C); background-size: 200% 100%; }
+[data-theme="dark"] .site-footer { border-top-color: #57534E; color: #A8A29E; }
+[data-theme="dark"] .site-footer-copy { color: #78716C; }
+[data-theme="dark"] .site-footer-credit { color: #BE9873; }
+[data-theme="dark"] .site-footer-credit strong { color: #EBD9A8; }

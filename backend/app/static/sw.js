@@ -1,6 +1,6 @@
 /* Service worker: cache app shell for offline viewing (reports/shell only).
    v2: JS uses network-first so the browser never runs a stale save-handler. */
-const CACHE = "asalah-v2";
+const CACHE = "asalah-v3";
 const SHELL = ["/login", "/dashboard", "/static/css/variables.css",
   "/static/css/components.css", "/static/js/main.js?v=2"];
 self.addEventListener("install", (e) => {

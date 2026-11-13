@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block head %}
-<link href="{{ url_for('static', filename='css/auth.css') }}?v=2" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/auth.css') }}?v=3" rel="stylesheet">
 {% endblock %}
 {% block body %}
 <div class="auth-shell">
@@ -116,7 +116,11 @@
       </div>
     </div>
 
-    <div class="auth-main-foot">© 2026 دفتر الأصالة — صُنع بعناية للأعمال العربية</div>
+    <div class="auth-main-foot">
+      © 2026 دفتر الأصالة — صُنع بعناية للأعمال العربية
+      <span class="auth-sep" aria-hidden="true">·</span>
+      <span class="auth-credit">برمجة وتصميم: <b>أحمد أبوديه</b> و<b>محمود أبو الرب</b></span>
+    </div>
   </main>
 </div>
 

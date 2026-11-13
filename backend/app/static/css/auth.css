@@ -891,6 +891,14 @@
 }
 .auth-main-foot a { color: var(--brown-500); text-decoration: none; font-weight: 700; }
 .auth-main-foot a:hover { color: var(--brown-700); }
+.auth-main-foot .auth-sep { margin-inline: 4px; color: var(--gold-500); }
+.auth-main-foot .auth-credit {
+  color: var(--brown-500);
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.auth-main-foot .auth-credit b { color: var(--brown-700); font-weight: 800; }
 
 /* الرسائل والتنبيهات */
 .auth-alert { margin-bottom: 14px; font-size: 12.5px; border-radius: 12px; }
@@ -949,6 +957,8 @@
 [data-theme="dark"] .auth-top-link strong { color: #EBD9A8; }
 [data-theme="dark"] .auth-brand-sub { color: #A8A29E; }
 [data-theme="dark"] .auth-main-foot { color: #78716C; }
+[data-theme="dark"] .auth-main-foot .auth-credit { color: #A8A29E; }
+[data-theme="dark"] .auth-main-foot .auth-credit b { color: #EBD9A8; }
 
 /* ==========================================================================
    الحركة
@@ -1076,6 +1086,9 @@
   .auth-form .auth-submit,
   .auth-form .btn-primary,
   .auth-form .btn-gold { min-height: 52px; }
+  .auth-main-foot .auth-sep { display: none; }
+  .auth-main-foot .auth-credit { display: block; margin-top: 3px; }
+  .auth-main-foot .auth-credit b { white-space: nowrap; }
 }
 
 /* شاشات لابتوب قصيرة: نُبقي نموذج الدخول كاملًا داخل الشاشة */
