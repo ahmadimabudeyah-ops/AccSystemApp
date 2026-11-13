@@ -1,25 +1,65 @@
 {% extends "layouts/auth.html" %}
 {% block title %}تسجيل الدخول{% endblock %}
-{% block auth_heading %}تسجيل الدخول{% endblock %}
-{% block auth_subtitle %}أهلًا بعودتك، سجّل الدخول للمتابعة{% endblock %}
+{% block auth_heading %}أهلًا بعودتك{% endblock %}
+{% block auth_subtitle %}سجّل الدخول لمتابعة أعمالك — كل شيء في مكانه{% endblock %}
 {% block auth_form %}
-<form id="login-form" novalidate>
-  <div class="alert alert-error" id="login-error" hidden></div>
-  <div class="mb-3">
+<form id="login-form" class="auth-form" novalidate>
+  <div class="alert alert-error auth-alert" id="login-error" hidden role="alert"></div>
+
+  <div class="auth-field">
     <label class="form-label" for="tenant">رمز المؤسسة <span class="req">*</span></label>
-    <input class="form-control ltr" id="tenant" name="tenant_code" dir="ltr" placeholder="DEMO" value="DEMO" required>
+    <div class="auth-input">
+      <span class="auth-input-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M2 21h20"/><path d="M8 7h4M8 11h4M8 15h4"/><path d="M16 9h2a2 2 0 0 1 2 2v10"/></svg>
+      </span>
+      <input class="form-control ltr" id="tenant" name="tenant_code" dir="ltr" placeholder="DEMO" value="DEMO" autocomplete="organization" required>
+    </div>
   </div>
-  <div class="mb-3">
+
+  <div class="auth-field">
     <label class="form-label" for="email">البريد الإلكتروني <span class="req">*</span></label>
-    <input class="form-control" id="email" name="email" type="email" dir="ltr" placeholder="admin@demo.local" required>
+    <div class="auth-input">
+      <span class="auth-input-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+      </span>
+      <input class="form-control" id="email" name="email" type="email" dir="ltr" placeholder="admin@demo.local" autocomplete="username" required>
+    </div>
     <div class="form-error" hidden>يرجى إدخال بريد إلكتروني صحيح</div>
   </div>
-  <div class="mb-3">
+
+  <div class="auth-field">
     <label class="form-label" for="password">كلمة المرور <span class="req">*</span></label>
-    <input class="form-control" id="password" name="password" type="password" dir="ltr" required>
+    <div class="auth-input">
+      <span class="auth-input-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10" width="15" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      </span>
+      <input class="form-control" id="password" name="password" type="password" dir="ltr" autocomplete="current-password" required>
+      <button class="auth-eye" type="button" data-toggle-password="password" aria-label="إظهار كلمة المرور" aria-pressed="false">
+        <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>
+        <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" hidden><path d="m3 3 18 18"/><path d="M10.6 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-3.2 3.6M6.2 6.7A16.6 16.6 0 0 0 2.5 12S6 18 12 18a10 10 0 0 0 4.2-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+      </button>
+    </div>
   </div>
-  <button class="btn btn-primary w-100" type="submit">تسجيل الدخول</button>
-  <div class="text-center mt-3"><a href="{{ url_for('web_auth.forgot_password') }}">نسيت كلمة المرور؟</a></div>
+
+  <div class="auth-row">
+    <label class="auth-check" for="remember-me">
+      <input type="checkbox" id="remember-me" name="remember">
+      <span>تذكّرني على هذا الجهاز</span>
+    </label>
+    <a class="auth-link" href="{{ url_for('web_auth.forgot_password') }}">نسيت كلمة المرور؟</a>
+  </div>
+
+  <button class="auth-submit" type="submit">
+    <span>تسجيل الدخول</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg>
+  </button>
+
+  <div class="auth-divider"><span>أو</span></div>
+
+  <a class="auth-alt-btn" href="{{ url_for('web_auth.register') }}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+    <span>ليس لديك حساب؟ اطلب نسخة تجريبية</span>
+  </a>
 </form>
 {% endblock %}
 {% block scripts %}
@@ -37,16 +77,28 @@
       history.replaceState(null, "", "{{ url_for('web_auth.login') }}");
     }
   } catch (e) { /* ignore */ }
+
   function store(k, v) {
     try { localStorage.setItem(k, v); } catch (e) {}
     try { sessionStorage.setItem(k, v); } catch (e) {}
   }
+
+  var submitBtn = document.querySelector('#login-form button[type="submit"]');
+  var submitHTML = submitBtn ? submitBtn.innerHTML : '<span>تسجيل الدخول</span>';
+
   function fail(msg) {
     var box = document.getElementById("login-error");
-    if (box) { box.textContent = msg; box.hidden = false; }
-    var btn = document.querySelector('#login-form button[type="submit"]');
-    if (btn) { btn.disabled = false; btn.textContent = "تسجيل الدخول"; }
+    if (box) {
+      box.textContent = msg;
+      box.hidden = false;
+    }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove("is-loading");
+      submitBtn.innerHTML = submitHTML;
+    }
   }
+
   document.addEventListener("DOMContentLoaded", function () {
     var form = document.getElementById("login-form");
     if (!form || form.dataset.bound === "1") return;
@@ -61,20 +113,34 @@
       var emailOk = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test((email.value || "").trim());
       if (!emailOk) { fail("يرجى إدخال بريد إلكتروني صحيح"); email.focus(); return; }
       if (!password.value) { fail("كلمة المرور مطلوبة"); password.focus(); return; }
+
+      var box = document.getElementById("login-error");
+      if (box) box.hidden = true;
+
       btn.disabled = true;
-      btn.textContent = "جارٍ الدخول…";
+      btn.classList.add("is-loading");
+      btn.innerHTML = '<span class="auth-spinner" aria-hidden="true"></span><span>جارٍ التحقق…</span>';
+
       fetch("/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Tenant-ID": tenant.value.trim() },
         body: JSON.stringify({ username: email.value.trim(), password: password.value }),
       }).then(function (res) {
-        if (!res.ok) throw new Error("auth");
+        if (!res.ok) {
+          var err = new Error("auth");
+          err.status = res.status;
+          throw err;
+        }
         return res.json();
       }).then(function (data) {
         store("access_token", data.access_token);
         store("refresh_token", data.refresh_token);
         var payload = {};
-        try { payload = JSON.parse(atob(data.access_token.split(".")[1])); } catch (err) {}
+        try {
+          var part = data.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+          while (part.length % 4) part += "=";
+          payload = JSON.parse(atob(part));
+        } catch (err) {}
         if (payload.tenant_id) store("tenant_id", payload.tenant_id);
         if (!payload.tenant_id) { window.location.href = "/dashboard"; return; }
         fetch("/api/v1/tenants/" + payload.tenant_id + "/entities", {
@@ -85,9 +151,12 @@
           window.location.href = "/dashboard";
         }).catch(function () { window.location.href = "/dashboard"; });
       }).catch(function (err) {
-        fail(err && err.message === "auth"
-          ? "بيانات الدخول غير صحيحة — تحقق من البريد وكلمة المرور"
-          : "تعذر الاتصال بالخادم — تحقق أن الخادم يعمل ثم أعد المحاولة");
+        var msg;
+        if (err && err.status === 401) msg = "بيانات الدخول غير صحيحة — تحقق من البريد وكلمة المرور";
+        else if (err && err.status === 403) msg = "هذا الحساب غير مصرّح له بالدخول — تواصل مع مدير النظام";
+        else if (err && err.status) msg = "تعذّر إكمال الدخول — حاول مرة أخرى";
+        else msg = "تعذر الاتصال بالخادم — تحقق من اتصالك ثم أعد المحاولة";
+        fail(msg);
       });
     }, true);
   });

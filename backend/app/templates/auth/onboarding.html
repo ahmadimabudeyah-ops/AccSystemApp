@@ -1,6 +1,14 @@
 {% extends "layouts/auth.html" %}
 {% block title %}ابدأ نسختك التجريبية{% endblock %}
+{% block auth_heading %}ابدأ نسختك التجريبية{% endblock %}
 {% block auth_subtitle %}تهيئة مؤسستك في 5 خطوات — مجانًا 30 يومًا{% endblock %}
+{% block auth_top_link %}
+<a class="auth-top-link" href="{{ url_for('web_auth.login') }}">
+  <span class="top-link-prefix">لديك حساب؟</span>
+  <strong>سجّل الدخول</strong>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg>
+</a>
+{% endblock %}
 {% block auth_form %}
 <div x-data="{step:1, form:{}, done:null, error:null}">
   <ol class="d-flex gap-2 mb-3" style="list-style:none;padding:0">
