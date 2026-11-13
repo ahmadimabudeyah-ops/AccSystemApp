@@ -87,8 +87,9 @@
   ]),
 ] %}
 
-<h3 class="mb-2">الوصول السريع للشاشات</h3>
-<div class="qc-wrap">
+<div class="dash3d-panel qc-panel">
+  <h3 class="mb-2">الوصول السريع للشاشات</h3>
+  <div class="qc-wrap">
 {% for group_name, group_class, cards in quick_groups %}
   <div class="qc-group-title">{{ group_name }}</div>
   <div class="qc-row">
@@ -100,6 +101,7 @@
 {% endfor %}
   </div>
 {% endfor %}
+</div>
 </div>
 
 {# ====== مؤشرات الأداء ====== #}
